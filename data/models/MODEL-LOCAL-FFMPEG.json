@@ -1,0 +1,12 @@
+{
+  "model_id": "MODEL-LOCAL-FFMPEG",
+  "name": "FFmpeg 本地媒体引擎",
+  "type": "media",
+  "provider": "local",
+  "adapter": "ffmpeg",
+  "enabled": true,
+  "description": "本地视频/音频封装、裁剪、拼接等媒体处理。",
+  "command": "ffmpeg",
+  "created_at": "2026-10-06T03:40:19",
+  "updated_at": "2026-10-06T03:40:19"
+}

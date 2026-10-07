@@ -1,0 +1,11 @@
+SciCloud AGI V40.21 -> V40.30  Local Production Factory
+40.21 local media foundation
+40.22 ComfyUI image/video execution bridge
+40.23 real TTS output validation
+40.24 SRT subtitle engine
+40.25 audio processing/mixing
+40.26 automatic media assembly
+40.27 MP4 export
+40.28 production run state
+40.29 production factory UI
+40.30 integrated local production chain

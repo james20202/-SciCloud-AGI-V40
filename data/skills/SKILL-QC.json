@@ -1,0 +1,10 @@
+{
+  "skill_id": "SKILL-QC",
+  "name": "视频质检",
+  "type": "qc",
+  "description": "检查画面、音频、字幕和连续性",
+  "provider": "builtin",
+  "enabled": true,
+  "version": "1.0.0",
+  "updated_at": "2026-10-06T03:40:19"
+}

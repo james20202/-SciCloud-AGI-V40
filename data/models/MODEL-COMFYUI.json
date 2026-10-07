@@ -1,0 +1,12 @@
+{
+  "model_id": "MODEL-COMFYUI",
+  "name": "ComfyUI 本地图像/视频",
+  "type": "image_video",
+  "provider": "local",
+  "adapter": "comfyui",
+  "enabled": false,
+  "description": "连接本机 ComfyUI API，具体模型由 ComfyUI 工作流决定。",
+  "endpoint": "http://127.0.0.1:8188",
+  "created_at": "2026-10-06T03:40:19",
+  "updated_at": "2026-10-06T03:40:19"
+}

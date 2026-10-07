@@ -1,0 +1,10 @@
+{
+  "skill_id": "SKILL-SOUND",
+  "name": "音效与BGM",
+  "type": "audio",
+  "description": "生成或匹配音效、BGM",
+  "provider": "adapter",
+  "enabled": true,
+  "version": "1.0.0",
+  "updated_at": "2026-10-06T03:40:19"
+}

@@ -1,0 +1,10 @@
+{
+  "skill_id": "SKILL-VIDEO",
+  "name": "动态镜头生成",
+  "type": "video",
+  "description": "调用视频模型/工作流生成镜头",
+  "provider": "adapter",
+  "enabled": true,
+  "version": "1.0.0",
+  "updated_at": "2026-10-06T03:40:19"
+}

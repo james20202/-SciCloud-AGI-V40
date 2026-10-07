@@ -1,0 +1,8 @@
+{
+  "id": "PROMPT-7A56B606",
+  "key": "character",
+  "version": 1,
+  "name": "人物设定",
+  "template": "{{character}}, {{costume}}, {{expression}}, full body character design, consistent face, {{style}}, detailed",
+  "negative": "different face, different costume, extra limbs, deformed hands, blurry, watermark"
+}

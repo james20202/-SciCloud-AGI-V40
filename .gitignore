@@ -1,0 +1,79 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Logs / temporary files
+logs/
+*.log
+*.tmp
+*.temp
+
+# Generated output
+output/
+outputs/
+render/
+renders/
+generated/
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.wav
+*.mp3
+
+# Project runtime data
+cache/
+caches/
+tmp/
+temp/
+
+# ComfyUI runtime / models / generated data
+ComfyUI/models/
+ComfyUI/output/
+ComfyUI/input/
+ComfyUI/temp/
+ComfyUI/custom_nodes/*/models/
+ComfyUI/.cache/
+
+# Large model files
+*.ckpt
+*.safetensors
+*.pth
+*.pt
+*.onnx
+*.gguf
+*.bin
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# V40 historical release directories
+SciCloud_AGI_V40_40.*
+
+# Historical source copies
+core/SciCloud_AGI_V40_40.*/
+ui_backup_v40/
+ComfyUI/
+projects/
+logs/
+backups/

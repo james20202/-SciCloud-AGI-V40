@@ -1,0 +1,8 @@
+{
+  "id": "PROMPT-267F2639",
+  "key": "scene",
+  "version": 1,
+  "name": "场景设定",
+  "template": "{{scene}}, {{time}}, {{weather}}, {{lighting}}, cinematic environment design, {{style}}, detailed",
+  "negative": "people, text, watermark, low quality, distorted architecture"
+}

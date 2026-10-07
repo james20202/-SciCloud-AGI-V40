@@ -1,0 +1,8 @@
+{
+  "id": "PROMPT-99544CB5",
+  "key": "cinematic_shot",
+  "version": 1,
+  "name": "电影感镜头",
+  "template": "{{subject}}, {{action}}, {{scene}}, {{camera}}, {{lighting}}, {{style}}, cinematic composition, detailed, consistent character",
+  "negative": "deformed hands, extra fingers, duplicate person, distorted face, blurry, low quality, text, watermark"
+}
