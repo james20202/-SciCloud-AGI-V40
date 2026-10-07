@@ -1,4 +1,4 @@
 APP_NAME="SciCloud AGI V40"
 PRODUCT_NAME="SciCloud AGI V40 · AI内容导演操作系统"
-VERSION="40.300.0"
-CODENAME="Auto Episode Production"
+VERSION="40.301.0"
+CODENAME="Director Dock UI + Desktop App"

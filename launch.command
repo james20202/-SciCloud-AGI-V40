@@ -1,3 +1,11 @@
 #!/bin/bash
-cd "$(dirname "$0")"
-exec python3 main.py
+set -e
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+mkdir -p "$ROOT/logs"
+PYTHON=""
+for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+  if [ -x "$candidate" ]; then PYTHON="$candidate"; break; fi
+done
+if [ -z "$PYTHON" ]; then PYTHON="$(command -v python3 || true)"; fi
+if [ -z "$PYTHON" ]; then osascript -e 'display dialog "未找到 Python 3，请先安装 Python 3。" buttons {"好"}'; exit 1; fi
+exec "$PYTHON" "$ROOT/main.py" >> "$ROOT/logs/app.log" 2>&1

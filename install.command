@@ -8,6 +8,6 @@ mkdir -p "$TARGET"
 if [ "$SOURCE" != "$TARGET" ]; then
   rsync -a --exclude 'data/' --exclude 'projects/' --exclude 'output/' --exclude 'logs/' --exclude 'backups/' "$SOURCE/" "$TARGET/"
 fi
-mkdir -p "$TARGET"/data "$TARGET"/projects "$TARGET"/output "$TARGET"/logs "$TARGET"/backups
-chmod +x "$TARGET/launch.command"
-open "$TARGET/launch.command"
+mkdir -p "$TARGET/data" "$TARGET/projects" "$TARGET/output" "$TARGET/logs" "$TARGET/backups"
+chmod +x "$TARGET/launch.command" "$TARGET/SciCloud AGI V40.app/Contents/MacOS/SciCloudAGI" 2>/dev/null || true
+open "$TARGET/SciCloud AGI V40.app"

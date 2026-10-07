@@ -1,50 +1,98 @@
-from PySide6.QtWidgets import QMainWindow,QWidget,QHBoxLayout,QVBoxLayout,QPushButton,QStackedWidget,QFrame,QLabel
+from PySide6.QtCore import Qt, QPoint
+from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QFrame, QLabel, QToolButton, QMenu, QSizePolicy, QSpacerItem
 from ui.pages.production_dashboard import ProductionDashboard
+from ui.pages.director_plan import DirectorPlanPage
+from ui.pages.storyboard_director import StoryboardDirectorPage
+from ui.pages.autopilot_center import AutopilotCenter
+from ui.pages.workflow_queue import WorkflowQueuePage
+from ui.pages.local_production_studio import LocalProductionStudio
+from ui.pages.episode_pipeline_center import EpisodePipelineCenter
 from ui.pages.project_matrix import ProjectMatrix
 from ui.pages.asset_center import AssetCenter
-from ui.pages.ai_center import AICenter
-from ui.pages.batch_center import BatchCenter
-from ui.pages.video_center import VideoCenter
-from ui.pages.publish_center import PublishCenter
-from ui.pages.system_center import SystemCenter
-from ui.pages.director_plan import DirectorPlanPage
-from ui.pages.workflow_queue import WorkflowQueuePage
-from ui.pages.vision_center import VisionCenter
+from ui.pages.bible_center import BibleCenter
 from ui.pages.prompt_center import PromptCenter
 from ui.pages.skill_center import SkillCenter
 from ui.pages.model_center import ModelCenter
-from ui.pages.bible_center import BibleCenter
-from ui.pages.storyboard_director import StoryboardDirectorPage
-from ui.pages.director_loop_center import DirectorLoopCenter
-from ui.pages.production_factory import ProductionFactoryPage
-from ui.pages.episode_center import EpisodeCenterPage
-from ui.pages.autopilot_center import AutopilotCenter
-from ui.pages.local_production_studio import LocalProductionStudio
-from ui.pages.episode_pipeline_center import EpisodePipelineCenter
 from ui.pages.model_diagnostics import ModelDiagnosticsPage
 from ui.pages.model_router_center import ModelRouterCenter
-from ui.pages.model_router_center import ModelRouterCenter
-from ui.pages.model_router_center import ModelRouterCenter
-from ui.pages.model_router_center import ModelRouterCenter
-try: from ui.pages.v30.pipeline_center import PipelineCenter
-except Exception: PipelineCenter=None
+from ui.pages.video_center import VideoCenter
+from ui.pages.publish_center import PublishCenter
+from ui.pages.system_center import SystemCenter
+from ui.pages.production_factory import ProductionFactoryPage
+from ui.pages.vision_center import VisionCenter
+from ui.pages.ai_center import AICenter
+from ui.pages.batch_center import BatchCenter
+try:
+    from ui.pages.v30.pipeline_center import PipelineCenter
+except Exception:
+    PipelineCenter = None
 
 class MainWindow(QMainWindow):
     def __init__(self):
-        super().__init__(); self.setWindowTitle('SciCloud AGI V40 · AI内容导演操作系统'); self.resize(1480,900); self.build()
+        super().__init__()
+        self.setWindowTitle('SciCloud AGI V40 · AI内容导演操作系统')
+        self.resize(1540, 960)
+        self.setMinimumSize(1200, 760)
+        self.pages = {}
+        self.build()
+
     def build(self):
-        root=QWidget(); self.setCentralWidget(root); layout=QHBoxLayout(root); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
-        side=QFrame(); side.setObjectName('Sidebar'); side.setFixedWidth(230); sl=QVBoxLayout(side); sl.setContentsMargins(18,24,18,20); sl.setSpacing(6)
-        brand=QLabel('✦ SciCloud AGI'); brand.setObjectName('Brand'); sl.addWidget(brand); sub=QLabel('V40 · AI内容导演操作系统'); sub.setObjectName('SubBrand'); sl.addWidget(sub); sl.addSpacing(22)
-        self.stack=QStackedWidget(); self.pages={}; self.buttons=[]
-        entries=[('🎬  导演驾驶舱',ProductionDashboard()),('🧠  AI导演计划',DirectorPlanPage()),('⚙  生产工作流',WorkflowQueuePage()),('📚  项目矩阵',ProjectMatrix()),('📖  Character / Scene Bible',BibleCenter()),('🎥  AI导演分镜',StoryboardDirectorPage()),('👁  视觉导演审核',VisionCenter()),('🎭  人物 / 资产中心',AssetCenter()),('🏭  本地生产工厂',ProductionFactoryPage()),('🎬  一键自动生产一集',EpisodeCenterPage()),('🚀  V40.60 自动驾驶',AutopilotCenter()),('🎞  V40.80 本地生产工作台',LocalProductionStudio()),('🚀  V40.100 一键成片流水线',EpisodePipelineCenter()),('🩺  模型实战诊断',ModelDiagnosticsPage()),('🧭  模型自动路由',ModelRouterCenter()),('🧭  模型自动路由',ModelRouterCenter()),('🧭  模型自动路由',ModelRouterCenter()),('🧭  模型自动路由',ModelRouterCenter()),('🧠  AI中心',AICenter()),('🚀  批量生产',BatchCenter())]
-        if PipelineCenter: entries.append(('⚙  自动流水线',PipelineCenter()))
-        entries += [('🧠  Model Hub',ModelCenter()),('🪄  Prompt Engine',PromptCenter()),('🧰  Skill Registry',SkillCenter()),('🎞  视频中心',VideoCenter()),('📤  发布中心',PublishCenter()),('🛠  系统中心',SystemCenter())]
-        for name,page in entries:self.add_page(name,page,sl)
-        sl.addStretch(); foot=QLabel('Local-first\n数据随项目目录保存'); foot.setObjectName('SubBrand'); sl.addWidget(foot)
-        layout.addWidget(side); layout.addWidget(self.stack,1); self.buttons[0].setChecked(True)
-    def add_page(self,name,page,layout):
-        b=QPushButton(name); b.setObjectName('NavButton'); b.setCheckable(True); b.clicked.connect(lambda checked,p=page,btn=b:self.select(p,btn)); layout.addWidget(b); self.buttons.append(b); self.pages[name]=page; self.stack.addWidget(page)
-    def select(self,page,button):
-        self.stack.setCurrentWidget(page)
-        for b in self.buttons:b.setChecked(b is button)
+        root = QWidget(); self.setCentralWidget(root)
+        outer = QVBoxLayout(root); outer.setContentsMargins(0,0,0,0); outer.setSpacing(0)
+        outer.addWidget(self.build_topbar())
+        body = QWidget(); bl = QHBoxLayout(body); bl.setContentsMargins(12,12,12,12); bl.setSpacing(12)
+        bl.addWidget(self.build_dock())
+        self.stack = QStackedWidget(); self.stack.setObjectName('ContentStack'); bl.addWidget(self.stack,1)
+        outer.addWidget(body,1)
+        self.register_pages(); self.select('驾驶舱')
+
+    def build_topbar(self):
+        bar=QFrame(); bar.setObjectName('Topbar'); l=QHBoxLayout(bar); l.setContentsMargins(18,10,18,10); l.setSpacing(10)
+        mark=QLabel('✦'); mark.setObjectName('BrandMark'); l.addWidget(mark)
+        brand=QLabel('SciCloud AGI V40'); brand.setObjectName('Brand'); l.addWidget(brand)
+        sub=QLabel('AI导演·让创意变成现实'); sub.setObjectName('TopSub'); l.addWidget(sub)
+        l.addStretch()
+        status=QLabel('●  AI导演在线'); status.setObjectName('StatusPill'); l.addWidget(status)
+        for t,k in [('项目','项目'),('资源','资产'),('模型','模型')]:
+            b=QToolButton(); b.setObjectName('TopAction'); b.setText(t); b.clicked.connect(lambda _=False,kk=k:self.select(kk)); l.addWidget(b)
+        storage=QLabel('存储 68%'); storage.setObjectName('StorageChip'); l.addWidget(storage)
+        avatar=QLabel('JM'); avatar.setObjectName('UserAvatar'); l.addWidget(avatar)
+        user=QLabel('jm zhao'); user.setObjectName('UserChip'); l.addWidget(user)
+        return bar
+
+    def build_dock(self):
+        dock=QFrame(); dock.setObjectName('Dock'); dock.setFixedWidth(148)
+        l=QVBoxLayout(dock); l.setContentsMargins(8,12,8,12); l.setSpacing(4)
+        self.dock_buttons=[]
+        items=[('⌂','首页','驾驶舱'),('▤','项目','项目'),('✦','创作','创作'),('▶','生成','生产'),('◇','资产','资产'),('◈','模型','模型'),('◆','ComfyUI','工作流')]
+        for icon,label,key in items:
+            b=QToolButton(); b.setObjectName('NavButton'); b.setCheckable(True); b.setText(icon+'\n'+label); b.setToolTip(label); b.setMinimumHeight(52); b.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Fixed); b.clicked.connect(lambda _=False,k=key:self.select(k)); l.addWidget(b); self.dock_buttons.append((key,b))
+        tools=QToolButton(); tools.setObjectName('NavButton'); tools.setText('⚙\n工具'); tools.setToolTip('更多工具'); tools.setMinimumHeight(52); tools.clicked.connect(self.show_more_menu); l.addWidget(tools); self.dock_buttons.append(('工具',tools))
+        sets=QToolButton(); sets.setObjectName('NavButton'); sets.setText('⚙\n设置'); sets.setToolTip('系统中心'); sets.setMinimumHeight(52); sets.clicked.connect(lambda:self.select('系统')); l.addWidget(sets); self.dock_buttons.append(('设置',sets))
+        l.addItem(QSpacerItem(1,1,QSizePolicy.Minimum,QSizePolicy.Expanding))
+        fb=QLabel('SciCloud AGI V40'); fb.setObjectName('DockFooterBrand'); fb.setAlignment(Qt.AlignCenter); l.addWidget(fb)
+        fs=QLabel('AI让每个人都能成为导演'); fs.setObjectName('DockFooterSub'); fs.setAlignment(Qt.AlignCenter); l.addWidget(fs)
+        return dock
+
+    def register_pages(self):
+        self.add_page('驾驶舱',ProductionDashboard()); self.add_page('创作',DirectorPlanPage()); self.add_page('分镜',StoryboardDirectorPage()); self.add_page('视觉审核',VisionCenter())
+        self.add_page('生产',AutopilotCenter()); self.add_page('工作流',WorkflowQueuePage()); self.add_page('本地工厂',ProductionFactoryPage()); self.add_page('生产工作台',LocalProductionStudio()); self.add_page('一键成片',EpisodePipelineCenter())
+        self.add_page('资产',AssetCenter()); self.add_page('人物场景',BibleCenter()); self.add_page('Prompt',PromptCenter()); self.add_page('Skill',SkillCenter())
+        self.add_page('模型',ModelCenter()); self.add_page('模型诊断',ModelDiagnosticsPage()); self.add_page('模型路由',ModelRouterCenter()); self.add_page('后期',VideoCenter()); self.add_page('发布',PublishCenter()); self.add_page('系统',SystemCenter()); self.add_page('项目',ProjectMatrix()); self.add_page('AI中心',AICenter()); self.add_page('批量生产',BatchCenter())
+        if PipelineCenter: self.add_page('自动流水线',PipelineCenter())
+    def add_page(self,key,page): self.pages[key]=page; self.stack.addWidget(page)
+    def select(self,key):
+        routes={'驾驶舱':'驾驶舱','创作':'创作','生产':'生产','资产':'资产','模型':'模型','后期':'后期','系统':'系统'}
+        target=routes.get(key,key); page=self.pages.get(target) or self.pages.get(key)
+        if page: self.stack.setCurrentWidget(page)
+        groups={'生产':{'工作流','本地工厂','生产工作台','一键成片'},'创作':{'分镜','视觉审核'},'资产':{'人物场景','Prompt','Skill'},'模型':{'模型诊断','模型路由'},'后期':{'发布'}}
+        for group,b in self.dock_buttons: b.setChecked(group==key or key in groups.get(group,set()))
+    def show_more_menu(self):
+        menu=QMenu(self)
+        sections={'创作工具':['分镜','视觉审核'],'生产工具':['工作流','本地工厂','生产工作台','一键成片'],'资产工具':['人物场景','Prompt','Skill'],'模型工具':['模型诊断','模型路由'],'项目与自动化':['项目','AI中心','批量生产','自动流水线'],'发布':['发布']}
+        for title,keys in sections.items():
+            sub=menu.addMenu(title)
+            for key in keys:
+                if key not in self.pages: continue
+                a=sub.addAction(key); a.triggered.connect(lambda _=False,k=key:self.select(k))
+        menu.exec(self.mapToGlobal(self.rect().topRight()+QPoint(-18,52)))

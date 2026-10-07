@@ -20,6 +20,10 @@ def main():
         dest=target/p.name
         if p.is_dir(): shutil.copytree(p,dest,dirs_exist_ok=True)
         else: shutil.copy2(p,dest)
+    app_bundle=target/'SciCloud AGI V40.app'
+    if app_bundle.exists():
+        os.system('open ' + __import__('shlex').quote(str(app_bundle)))
+        return 0
     mainpy=target/'main.py'
     if mainpy.exists():
         os.execv(sys.executable,[sys.executable,str(mainpy)])
