@@ -1,6 +1,7 @@
 import json, uuid, time
 from urllib import request
 from core.adapters.base import BaseAdapter, AdapterResult
+from core.comfyui_workflow import validate_workflow
 
 class ComfyUIAdapter(BaseAdapter):
     key='comfyui'
@@ -16,13 +17,18 @@ class ComfyUIAdapter(BaseAdapter):
             try: workflow=json.loads(workflow)
             except Exception: return AdapterResult(False,'ComfyUI workflow JSON 无法解析。')
         if not workflow: return AdapterResult(False,'ComfyUI 任务缺少 workflow JSON，未执行。')
+
+        validation = validate_workflow(workflow)
+        if not validation['valid']:
+            return AdapterResult(False, 'ComfyUI workflow 校验失败：' + '; '.join(validation['errors']), data={'validation': validation})
+
         payload={'prompt':workflow,'client_id':'scicloud-'+uuid.uuid4().hex[:8]}
         try:
             req=request.Request(self._url(model,'/prompt'),data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})
             with request.urlopen(req,timeout=10) as r: result=json.loads(r.read().decode())
             pid=result.get('prompt_id')
             if not pid:return AdapterResult(False,'ComfyUI 未返回 prompt_id。',data=result)
-            return AdapterResult(True,'ComfyUI 工作流已提交',data={'prompt_id':pid,'queued':True})
+            return AdapterResult(True,'ComfyUI 工作流已提交',data={'prompt_id':pid,'queued':True,'validation':validation})
         except Exception as e:return AdapterResult(False,f'ComfyUI 提交失败：{e}')
     def wait(self,model,prompt_id,timeout=1800,interval=2):
         end=time.time()+timeout
