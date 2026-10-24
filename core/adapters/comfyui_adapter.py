@@ -1,41 +1,164 @@
-import json, uuid, time
-from urllib import request
+import json, os, time, uuid
+from pathlib import Path
+from urllib import request, parse
+from urllib.error import HTTPError, URLError
 from core.adapters.base import BaseAdapter, AdapterResult
 
+
 class ComfyUIAdapter(BaseAdapter):
-    key='comfyui'
-    def _url(self, model, path): return model.get('endpoint','http://127.0.0.1:8188').rstrip('/')+path
+    """ComfyUI API client with real completion polling and output download."""
+    key = 'comfyui'
+    OUTPUT_EXTENSIONS = {
+        '.png', '.jpg', '.jpeg', '.webp', '.bmp',
+        '.mp4', '.webm', '.mov', '.gif',
+        '.wav', '.mp3', '.flac', '.ogg',
+    }
+
+    def _url(self, model, path):
+        return model.get('endpoint', 'http://127.0.0.1:8188').rstrip('/') + path
+
+    def _loopback_endpoint(self, model):
+        parsed = parse.urlparse(model.get('endpoint', 'http://127.0.0.1:8188'))
+        return parsed.scheme in ('http', 'https') and parsed.hostname in ('localhost', '127.0.0.1', '::1')
+
     def test(self, model):
+        if not self._loopback_endpoint(model):
+            return AdapterResult(False, '为保障本地优先和安全，ComfyUI 地址必须是 localhost/127.0.0.1/::1。')
         try:
-            with request.urlopen(self._url(model,'/system_stats'), timeout=3) as r:
-                return AdapterResult(r.status==200, 'ComfyUI 已连接', data=json.loads(r.read().decode('utf-8')))
-        except Exception as e: return AdapterResult(False, f'ComfyUI 未连接：{e}')
-    def execute(self, model, task, context):
-        workflow=task.get('workflow') or context.get('workflow')
-        if isinstance(workflow,str):
-            try: workflow=json.loads(workflow)
-            except Exception: return AdapterResult(False,'ComfyUI workflow JSON 无法解析。')
-        if not workflow: return AdapterResult(False,'ComfyUI 任务缺少 workflow JSON，未执行。')
-        payload={'prompt':workflow,'client_id':'scicloud-'+uuid.uuid4().hex[:8]}
-        try:
-            req=request.Request(self._url(model,'/prompt'),data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})
-            with request.urlopen(req,timeout=10) as r: result=json.loads(r.read().decode())
-            pid=result.get('prompt_id')
-            if not pid:return AdapterResult(False,'ComfyUI 未返回 prompt_id。',data=result)
-            return AdapterResult(True,'ComfyUI 工作流已提交',data={'prompt_id':pid,'queued':True})
-        except Exception as e:return AdapterResult(False,f'ComfyUI 提交失败：{e}')
-    def wait(self,model,prompt_id,timeout=1800,interval=2):
-        end=time.time()+timeout
-        while time.time()<end:
+            with request.urlopen(self._url(model, '/system_stats'), timeout=3) as r:
+                return AdapterResult(r.status == 200, 'ComfyUI 已连接', data=json.loads(r.read().decode('utf-8')))
+        except Exception as e:
+            return AdapterResult(False, f'ComfyUI 未连接：{e}')
+
+    def _workflow(self, task, context):
+        workflow = task.get('workflow') or context.get('workflow')
+        if isinstance(workflow, str):
             try:
-                with request.urlopen(self._url(model,'/history/'+prompt_id),timeout=5) as r:
-                    data=json.loads(r.read().decode())
-                item=data.get(prompt_id)
+                workflow = json.loads(workflow)
+            except Exception:
+                return None, 'ComfyUI workflow JSON 无法解析。'
+        if not isinstance(workflow, dict) or not workflow:
+            return None, 'ComfyUI 任务缺少 API 格式 workflow JSON，未执行。'
+        return workflow, None
+
+    def execute(self, model, task, context):
+        workflow, error = self._workflow(task, context)
+        if error:
+            return AdapterResult(False, error)
+        if not self._loopback_endpoint(model):
+            return AdapterResult(False, 'ComfyUI 地址必须是本机回环地址。')
+        payload = {'prompt': workflow, 'client_id': 'scicloud-' + uuid.uuid4().hex[:8]}
+        try:
+            req = request.Request(self._url(model, '/prompt'), data=json.dumps(payload).encode(),
+                                  headers={'Content-Type': 'application/json'})
+            with request.urlopen(req, timeout=10) as r:
+                result = json.loads(r.read().decode())
+            pid = result.get('prompt_id')
+            if not pid:
+                return AdapterResult(False, 'ComfyUI 未返回 prompt_id。', data=result)
+            return AdapterResult(True, 'ComfyUI 工作流已提交', data={'prompt_id': pid, 'queued': True})
+        except Exception as e:
+            detail = ''
+            if isinstance(e, HTTPError):
+                try: detail = e.read().decode('utf-8', errors='replace')[:1200]
+                except Exception: pass
+            return AdapterResult(False, f'ComfyUI 提交失败：{e}' + (f'；{detail}' if detail else ''))
+
+    def wait(self, model, prompt_id, timeout=1800, interval=2):
+        end = time.monotonic() + max(1, timeout)
+        while time.monotonic() < end:
+            try:
+                with request.urlopen(self._url(model, '/history/' + parse.quote(str(prompt_id), safe='')), timeout=5) as r:
+                    data = json.loads(r.read().decode())
+                item = data.get(prompt_id)
                 if item:
-                    status=item.get('status',{})
+                    status = item.get('status') or {}
+                    if status.get('status_str') == 'error' or status.get('completed') is False and status.get('status_str') == 'error':
+                        return AdapterResult(False, 'ComfyUI 工作流执行失败。', data=item)
                     if status.get('completed') or item.get('outputs'):
-                        return AdapterResult(True,'ComfyUI 工作流完成',data=item)
-                    if status.get('status_str')=='error':return AdapterResult(False,'ComfyUI 工作流失败',data=item)
-            except Exception: pass
-            time.sleep(interval)
-        return AdapterResult(False,'ComfyUI 等待超时。')
+                        outputs = item.get('outputs') or {}
+                        return AdapterResult(True, 'ComfyUI 工作流完成', data=item, outputs=self._output_refs(outputs))
+            except Exception:
+                pass
+            time.sleep(max(0.05, interval))
+        return AdapterResult(False, f'ComfyUI 工作流等待超时（{timeout} 秒）。', data={'prompt_id': prompt_id})
+
+    def _output_refs(self, outputs):
+        refs = []
+        for node_id, node_output in (outputs or {}).items():
+            if not isinstance(node_output, dict):
+                continue
+            for kind in ('images', 'gifs', 'videos', 'audio'):
+                for item in node_output.get(kind, []) or []:
+                    if not isinstance(item, dict) or not item.get('filename'):
+                        continue
+                    ext = Path(str(item['filename'])).suffix.lower()
+                    if ext not in self.OUTPUT_EXTENSIONS:
+                        continue
+                    refs.append({
+                        'node_id': str(node_id),
+                        'kind': 'video' if ext in ('.mp4', '.webm', '.mov', '.gif') else
+                                ('audio' if ext in ('.wav', '.mp3', '.flac', '.ogg') else 'image'),
+                        'filename': os.path.basename(str(item['filename'])),
+                        'subfolder': str(item.get('subfolder') or ''),
+                        'type': str(item.get('type') or 'output'),
+                    })
+        return refs
+
+    def download_outputs(self, model, refs, output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        saved = []
+        for ref in refs:
+            query = parse.urlencode({
+                'filename': ref['filename'],
+                'subfolder': ref['subfolder'],
+                'type': ref['type'],
+            })
+            try:
+                with request.urlopen(self._url(model, '/view?' + query), timeout=60) as r:
+                    content = r.read()
+                if not content:
+                    continue
+                safe_name = os.path.basename(ref['filename'])
+                stem, ext = os.path.splitext(safe_name)
+                target = os.path.join(output_dir, f"{stem}_{ref['node_id']}_{uuid.uuid4().hex[:6]}{ext.lower()}")
+                with open(target, 'wb') as f:
+                    f.write(content)
+                if os.path.isfile(target) and os.path.getsize(target) > 0:
+                    saved.append({'path': os.path.abspath(target), 'kind': ref['kind'],
+                                  'size': os.path.getsize(target), 'source_filename': safe_name})
+                else:
+                    try: os.remove(target)
+                    except OSError: pass
+            except Exception:
+                continue
+        return saved
+
+    def render(self, model, task, context=None):
+        """Submit a workflow, wait for completion, then download actual media outputs."""
+        context = context or {}
+        if not self._loopback_endpoint(model):
+            return AdapterResult(False, 'ComfyUI 地址必须是本机回环地址。')
+        submitted = self.execute(model, task, context)
+        if not submitted.success:
+            return submitted
+        prompt_id = submitted.data.get('prompt_id')
+        completed = self.wait(model, prompt_id, timeout=task.get('timeout', 1800),
+                              interval=task.get('poll_interval', 2))
+        if not completed.success:
+            return completed
+        refs = completed.outputs or self._output_refs(completed.data.get('outputs') or {})
+        if not refs:
+            return AdapterResult(False, 'ComfyUI 工作流已结束，但没有发现可下载的图片/视频/音频输出。',
+                                 data={'prompt_id': prompt_id, 'history': completed.data})
+        output_dir = task.get('output_dir') or context.get('output_dir')
+        if not output_dir:
+            return AdapterResult(False, '缺少输出目录，拒绝将远端缓存误报为本地产物。',
+                                 data={'prompt_id': prompt_id})
+        saved = self.download_outputs(model, refs, output_dir)
+        if not saved:
+            return AdapterResult(False, 'ComfyUI 已完成，但媒体下载失败或文件为空。',
+                                 data={'prompt_id': prompt_id, 'output_refs': refs})
+        return AdapterResult(True, f'ComfyUI 生成完成，已保存 {len(saved)} 个真实媒体文件。',
+                             outputs=saved, data={'prompt_id': prompt_id, 'output_refs': refs,
+                                                  'completed': True})
