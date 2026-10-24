@@ -14,6 +14,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install Qt runtime libraries for offscreen UI tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-randr0 libxcb-render-util0 libxcb-xfixes0 libxcb-xkb1
       - name: Install runtime and test dependencies
         run: |
           python -m pip install --upgrade pip
@@ -28,11 +32,11 @@ jobs:
           python tests/test_v4240.py
       - name: Build tested upgrade ZIP
         run: |
-          zip -r SciCloud_AGI_V40_302_Upgrade.zip core ui modules main.py main_backup.py requirements.txt README.md install.command launch.command apply_update.py clean_project.sh "SciCloud AGI V40.app" production.json projects.json publish.json
+          zip -r SciCloud_AGI_V40_303_Upgrade.zip core ui modules main.py main_backup.py requirements.txt README.md install.command launch.command apply_update.py clean_project.sh "SciCloud AGI V40.app" production.json projects.json publish.json
       - uses: actions/upload-artifact@v4
         with:
-          name: SciCloud-AGI-V40.302.0-upgrade
-          path: SciCloud_AGI_V40_302_Upgrade.zip
+          name: SciCloud-AGI-V40.303.0-upgrade
+          path: SciCloud_AGI_V40_303_Upgrade.zip
           if-no-files-found: error
           retention-days: 30
       - name: Run regression suite

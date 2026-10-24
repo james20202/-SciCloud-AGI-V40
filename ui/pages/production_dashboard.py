@@ -10,6 +10,7 @@ BG_PATH = os.path.join(ASSET_DIR, 'bg_main.png')
 class ProductionDashboard(QWidget):
     create_requested = Signal(str)
     navigate_requested = Signal(str)
+    quick_requested = Signal(str, str)
 
     def __init__(self):
         super().__init__(); self.build()
@@ -140,14 +141,18 @@ class ProductionDashboard(QWidget):
             '场景生成': '人物场景',
             '一键生成视频': '一键成片',
         }
-        if key == '生成剧本':
-            idea = self.idea.toPlainText().strip() or '创作一部60秒玄幻修仙短剧：主角从废柴逆袭，结尾留下悬念。'
+        idea = self.idea.toPlainText().strip()
+        if not idea:
+            idea = '创作一部60秒玄幻修仙短剧：主角从废柴逆袭，结尾留下悬念。'
             self.idea.setPlainText(idea)
-            self.create_requested.emit(idea)
-            return
         target = routes.get(key)
-        if target:
+        if not target:
+            return
+        if key == '生成剧本':
+            self.create_requested.emit(idea)
+        else:
             self.navigate_requested.emit(target)
+            self.quick_requested.emit(key, idea)
 
     def goto_project(self):
         self.navigate_requested.emit('项目')
