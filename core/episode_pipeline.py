@@ -5,6 +5,7 @@ from core.episode_engine import episode_engine
 from core.director_plan import director_plan_engine
 from core.shot_production_engine import shot_production_engine
 from core.production_engine import production_engine
+from core.local_media_engine import local_media_engine
 from core.publish_pack_engine import publish_pack_engine
 
 class EpisodePipeline:
@@ -91,7 +92,7 @@ class EpisodePipeline:
                 spec=shot.get('spec') or {}
                 duration=spec.get('duration_seconds') or spec.get('duration') or 5
                 clip=os.path.join(clip_dir,f"{shot.get('index',0):04d}_{shot.get('shot_id','shot')}.mp4")
-                rendered=production_engine.local_media_engine.image_to_video(images[0],clip,duration_seconds=duration)
+                rendered=local_media_engine.image_to_video(images[0],clip,duration_seconds=duration)
                 if not rendered.get('success'):
                     return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 图片转视频失败：{rendered.get('message','未知错误')}",rendered)
                 clips.append(clip)
