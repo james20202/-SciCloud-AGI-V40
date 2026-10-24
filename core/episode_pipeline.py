@@ -98,7 +98,9 @@ class EpisodePipeline:
                 spec=shot.get('spec') or {}
                 duration=spec.get('duration_seconds') or spec.get('duration') or 5
                 path=os.path.join(clip_dir,f"{shot.get('index',0):04d}_{shot.get('shot_id','shot')}.mp4")
-                rendered=local_media_engine.image_to_video(images[0]['path'],path,duration_seconds=duration)
+                fallback_width,fallback_height=(1080,1920) if d.get('aspect_ratio','9:16')=='9:16' else (1920,1080)
+                rendered=local_media_engine.image_to_video(images[0]['path'],path,duration_seconds=duration,
+                                                           width=fallback_width,height=fallback_height)
                 if not rendered.get('success'):
                     return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 图片转视频失败：{rendered.get('message','未知错误')}",rendered)
             # Use the director's planned duration when available, then normalize every shot
