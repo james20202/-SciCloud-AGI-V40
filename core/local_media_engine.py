@@ -37,7 +37,7 @@ class LocalMediaEngine:
             return {'success': False, 'message': '媒体文件不存在'}
         r = self._run([
             'ffprobe', '-v', 'error', '-show_entries',
-            'format=duration,size,format_name', '-of', 'json', path
+            'format=duration,size,format_name:stream=codec_type,codec_name,width,height', '-of', 'json', path
         ], 60)
         if r['success']:
             try:
