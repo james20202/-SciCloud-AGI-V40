@@ -82,7 +82,7 @@ class EpisodePipeline:
         shot_production_engine._save(job)
         refreshed=shot_production_engine.status(run_id)
         audit=character_reference_engine.audit([x.get('spec') or {} for x in refreshed.get('shots',[])])
-        d['stages']['shots']['result']['character_reference_audit']=audit
+        d.setdefault('stages', {}).setdefault('shots', {}).setdefault('result', {})['character_reference_audit']=audit
         self._save(d)
         return {'success':True,'run_id':run_id,'audit':audit,'status':refreshed.get('status')}
 
