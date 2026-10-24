@@ -135,3 +135,11 @@ python3 -m pip install -r requirements.txt
 - 镜头运行状态增加可恢复逻辑：支持继续 ready/blocked/failed 镜头，保留尝试次数、上次错误与有效产物记录；已完成且输入未变的镜头不重复触发生成。
 - 增加一致性锚点、输入指纹、缓存失效和素材有效性回归测试。
 - 参考 MIT 许可的 [LocalMiniDrama](https://github.com/xuanyustudio/LocalMiniDrama) 对人物/场景资产复用和可重跑工作流的公开设计；本版本相关模块为独立实现，未复制其源文件。此前直接复用的 Comic-drama MIT 代码许可仍见 THIRD_PARTY_NOTICES.md。
+
+
+## V40.407.0 · SQLite Job Recovery & Production Ledger
+- 新增 SQLite 持久化任务账本：任务 ID、类型、状态、进度、消息、结果、错误、创建/更新时间和参数在每次更新后写入本地数据库，跨应用重启保留。
+- 镜头生产运行记录同时保存到 SQLite 与原 JSON 文件；SQLite 可作为快速恢复来源，保留旧版 JSON 以兼容既有项目与诊断工具。
+- 启动后将上次进程遗留的 queued/running/cancelling 任务标记为 interrupted；镜头运行恢复时把中断中的镜头重新排队，不把旧的 running 状态伪装成正在执行。
+- 采用 MIT 项目 StudioLite 的 `filmmaker/job_store.py` 持久化任务存储实现作为直接代码复用基础，保留版权与 MIT 许可证，详见 THIRD_PARTY_NOTICES.md。
+- 新增 SQLite 重启恢复、任务更新持久化、JSON/SQLite 镜头运行记录同步和旧版运行记录兼容测试。
