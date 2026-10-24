@@ -23,10 +23,8 @@ class CharacterReferenceEngineTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.source = os.path.join(self.temp.name, "ref.png")
-        # A valid minimal 1x1 PNG.
-        import base64
-        with open(self.source, "wb") as stream:
-            stream.write(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII="))
+        from PIL import Image
+        Image.new('RGB', (32, 32), (20, 80, 160)).save(self.source)
         self.registry = FakeRegistry()
         self.engine = CharacterReferenceEngine(os.path.join(self.temp.name, "refs"), self.registry)
 
@@ -64,7 +62,7 @@ class CharacterReferenceEngineTests(unittest.TestCase):
         self.engine.register_reference("char-1", "林青", self.source)
         result = self.engine.bind_shot_references({"shot_id": "S2", "consistency": {"character_anchors": []}})
         self.assertEqual(result["character_reference_count"], 0)
-        self.assertNotIn("character_reference_assets", {"character_reference_assets": []} if False else {})
+        self.assertEqual(result.get("character_reference_assets"), [])
     
     def test_audit_reports_reference_coverage(self):
         report = self.engine.audit([
