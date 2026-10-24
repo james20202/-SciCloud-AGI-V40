@@ -110,3 +110,11 @@ python3 -m pip install -r requirements.txt
 - 发布包纳入时间线、流水线快照和成片，并为每个打包素材生成 SHA-256 清单，方便校验文件完整性与追踪来源。
 - 增加时间线连续性、镜头来源标记和音频素材关联测试。
 - 参考源： https://github.com/tccnnd/Comic-drama ，MIT License；本次借鉴其开放时间线契约。第三方源代码如后续直接复用，会保留对应版权与许可声明。
+
+
+## V40.404.0 · Shot Duration Lock
+- 参考 MIT 许可的 Comic-drama 时间线/镜头契约，并结合 MIT 许可的 AI-Short-Drama-Studio 中素材与后期流程的公开设计思路；未复制其整段实现代码。参考：https://github.com/tccnnd/Comic-drama 、https://github.com/JerrIsTheBesta/AI-Short-Drama-Studio
+- 单集剪辑阶段将每个镜头按导演分镜计划时长标准化，并统一输出画幅、帧率和像素格式；过短视频使用末帧延展，超长视频按目标时长裁切，避免镜头实际时长偏离计划。
+- 标准化前后通过 FFprobe 检查媒体；标准化失败会阻断流水线并保留错误详情，不会继续发布错误时长的成片。
+- 若输入镜头带音轨，则按镜头目标时长补齐/裁切音频；没有音轨的镜头保持无音轨，不伪造配音。最终成片仍须通过目标总时长 QC。
+- 新增镜头标准化单元测试；CI 结果只验证代码与自动化测试，不代表已在用户的 Mac 上完成真实 ComfyUI/模型渲染。
