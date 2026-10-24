@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from core.shot_production_engine import ShotProductionEngine
@@ -11,7 +12,11 @@ class ShotProductionStatusTests(unittest.TestCase):
             engine.root = root
             run = engine.create_run("EP-TEST", [{"shot_id": "S1"}, {"shot_id": "S2"}])
             data = engine.load(run["run_id"])
+            artifact = os.path.join(root, "valid-shot.mp4")
+            with open(artifact, "wb") as stream:
+                stream.write(b"valid media")
             data["shots"][0]["status"] = "done"
+            data["shots"][0]["artifacts"] = [{"kind": "video", "path": artifact}]
             engine._save(data)
             report = engine.status(run["run_id"])
         self.assertEqual(report["status"], "running")

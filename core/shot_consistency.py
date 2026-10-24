@@ -58,7 +58,9 @@ class ShotConsistencyEngine:
         style = _text((plan or {}).get("visual_style") or (plan or {}).get("style") or intent.get("visual_style"))
         if not style:
             genre = _text(intent.get("genre"))
-            style = (genre + "，电影级构图，统一光影与色彩，角色外观跨镜头保持一致").strip("，")
+            # Only synthesize a generic genre anchor when the plan actually
+            # declares a genre; otherwise leave unanchored legacy prompts intact.
+            style = (genre + "，电影级构图，统一光影与色彩，角色外观跨镜头保持一致").strip("，") if genre else ""
         return {"schema_version": 1, "style_anchor": style, "characters": characters, "scenes": scenes}
 
     def enrich_shot(self, shot, bible):

@@ -3,6 +3,11 @@ from datetime import datetime
 from core.config import PROJECT_DIR
 from core.production_engine import production_engine
 from core.shot_consistency import shot_fingerprint, valid_artifacts
+from core.persistent_job_store import PersistentJobStore
+
+_JOB_STORE_PATH = os.path.join(PROJECT_DIR, 'task_jobs.sqlite3')
+_job_store = PersistentJobStore(_JOB_STORE_PATH)
+_job_store.recover_interrupted_jobs()
 
 class ShotProductionEngine:
     """Resumable shot coordinator; completed outputs are reused only if valid."""
@@ -11,8 +16,22 @@ class ShotProductionEngine:
     def _now(self): return datetime.now().isoformat(timespec='seconds')
     def _path(self, run_id): return os.path.join(self.root,run_id+'.json')
     def _save(self, data):
+        if any(s.get('status') == 'running' for s in data.get('shots', [])):
+            data['status'] = 'running'
         data['updated_at']=self._now()
-        with open(self._path(data['run_id']),'w',encoding='utf-8') as f: json.dump(data,f,ensure_ascii=False,indent=2)
+        # Keep the human-readable JSON snapshot for compatibility while making
+        # SQLite the durable recovery source for task state and result payloads.
+        with open(self._path(data['run_id']),'w',encoding='utf-8') as f:
+            json.dump(data,f,ensure_ascii=False,indent=2)
+        _job_store[data['run_id']] = {
+            'kind': 'shot_run',
+            'status': data.get('status', 'ready'),
+            'progress': float(data.get('progress', 0) or 0),
+            'message': str(data.get('message') or ''),
+            'result': data,
+            'params': {'episode_id': data.get('episode_id'), 'run_id': data['run_id']},
+            'error': data.get('error'),
+        }
         return data
     def create_run(self, episode_id, shots):
         rid='SHOTRUN-'+uuid.uuid4().hex[:10].upper()
@@ -23,7 +42,25 @@ class ShotProductionEngine:
             data['shots'].append({'shot_id':sid,'index':i,'spec':spec,'input_fingerprint':shot_fingerprint(spec),'status':'ready','attempts':0,'artifacts':[],'last_result':None})
         return self._save(data)
     def load(self, run_id):
-        with open(self._path(run_id),encoding='utf-8') as f: return json.load(f)
+        record = _job_store.get(run_id)
+        data = record.get('result') if isinstance(record, dict) else None
+        if not isinstance(data, dict):
+            with open(self._path(run_id),encoding='utf-8') as f:
+                data = json.load(f)
+        # SQLite startup recovery marks an interrupted outer task. Re-queue
+        # in-flight shots instead of leaving a permanent fake spinner.
+        if isinstance(record, dict) and record.get('status') == 'interrupted':
+            for shot in data.get('shots', []):
+                if shot.get('status') == 'running':
+                    shot['status'] = 'ready'
+                    shot['last_result'] = {
+                        'success': False,
+                        'message': '应用上次退出时镜头正在运行，已恢复为待处理任务。'
+                    }
+            data['status'] = 'ready'
+            data['message'] = '检测到上次运行中断；可继续生产。'
+            self._save(data)
+        return data
     def _blocked(self, message, capability):
         return {'success':False,'blocked':True,'capability':capability,'message':message}
     def status(self, run_id):
