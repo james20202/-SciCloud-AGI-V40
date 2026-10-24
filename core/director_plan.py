@@ -71,9 +71,27 @@ class DirectorPlanEngine:
         ]
 
     def _shots(self, duration, chars, scenes, idea):
-        n = 8 if duration <= 60 else 12
+        # Keep the shot plan reasonably paced and make its duration sum exact
+        # to one decimal place, including durations that do not divide evenly.
+        duration = max(1.0, float(duration))
+        n = max(4, min(120, int((duration + 5.999) // 6)))
+        total_tenths = int(round(duration * 10))
+        base, remainder = divmod(total_tenths, n)
         labels = ["Hook特写","环境建立","人物进入","异常发现","冲突升级","核心动作","反转信息","悬念收尾"]
-        return [{"id":f"SHOT-{i+1:04d}","index":i+1,"duration":round(duration/n,1),"scene_id":scenes[min(i//3,len(scenes)-1)]["id"],"type":labels[i] if i<len(labels) else "补充镜头","prompt_status":"pending","status":"planned"} for i in range(n)]
+        shots = []
+        for i in range(n):
+            shot_tenths = base + (1 if i < remainder else 0)
+            scene_id = scenes[min(i // 3, len(scenes) - 1)]["id"] if scenes else ""
+            shots.append({
+                "id": f"SHOT-{i+1:04d}", "index": i+1,
+                "duration": shot_tenths / 10, "scene_id": scene_id,
+                "type": labels[i] if i < len(labels) else "补充镜头",
+                "visual_prompt": f"{idea.strip()}；镜头{i+1}，电影级构图，9:16竖屏，画面连续且人物一致",
+                "action": "推动剧情并强化镜头信息",
+                "dialogue": "", "director_note": "",
+                "prompt_status": "pending", "status": "planned"
+            })
+        return shots
 
     def _tasks(self):
         names=[("TASK-01","story","生成/完善剧本"),("TASK-02","character","建立人物资产"),("TASK-03","scene","建立场景资产"),("TASK-04","storyboard","生成分镜"),("TASK-05","prompt","生成镜头Prompt"),("TASK-06","image","生成关键画面"),("TASK-07","video","生成动态镜头"),("TASK-08","voice","生成配音"),("TASK-09","sound","生成音效与BGM"),("TASK-10","edit","进入剪辑时间轴"),("TASK-11","qc","质量检查"),("TASK-12","publish","准备发布")]
