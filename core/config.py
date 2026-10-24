@@ -1,7 +1,7 @@
 import os
 
 APP_NAME = "SciCloud AGI V40"
-VERSION = "40.309.0"
+VERSION = "40.400.0"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
