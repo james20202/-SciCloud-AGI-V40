@@ -51,7 +51,10 @@ class DirectorPlanPage(QWidget):
             QMessageBox.warning(self,'导演计划生成失败',str(exc))
             return
         self.plan=plan
-        self.summary.setText(f"{plan.get('title','未命名项目')}  ·  {plan['intent'].get('genre','原创短剧')}  ·  {len(plan['shots'])} 个镜头  ·  {len(plan['tasks'])} 个生产任务  ·  {sum(float(s.get('duration',0)) for s in plan['shots']):g} 秒")
+        generation=plan.get('generation',{})
+        mode='本地 Ollama' if generation.get('mode')=='local_ollama' else '本地规则兜底'
+        self.summary.setText(f"{plan.get('title','未命名项目')}  ·  {plan['intent'].get('genre','原创短剧')}  ·  {len(plan['shots'])} 个镜头  ·  {len(plan['tasks'])} 个生产任务  ·  {sum(float(s.get('duration',0)) for s in plan['shots']):g} 秒  ·  {mode}")
+        self.summary.setToolTip(generation.get('message','导演计划已生成'))
         self.tasks.clear()
         for task in plan['tasks']:
             self.tasks.addItem(f"{task.get('id','TASK')}   {task.get('name',task.get('type','生产任务'))}   ·   等待执行")

@@ -2,6 +2,7 @@ import json, os, re
 from datetime import datetime
 from uuid import uuid4
 from core.config import PROJECT_DIR
+from core.local_ollama_director import local_ollama_director
 
 class DirectorPlanEngine:
     def __init__(self, project_dir=PROJECT_DIR):
@@ -38,6 +39,7 @@ class DirectorPlanEngine:
             "tasks": tasks,
             "status": "planned"
         }
+        plan['generation'] = local_ollama_director.enrich_plan(plan)
         self.save_plan(plan)
         return plan
 
