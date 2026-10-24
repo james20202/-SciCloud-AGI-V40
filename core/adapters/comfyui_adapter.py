@@ -3,6 +3,7 @@ from pathlib import Path
 from urllib import request, parse
 from urllib.error import HTTPError, URLError
 from core.adapters.base import BaseAdapter, AdapterResult
+from core.character_reference_comfyui import bind_character_references
 
 
 class ComfyUIAdapter(BaseAdapter):
@@ -45,6 +46,14 @@ class ComfyUIAdapter(BaseAdapter):
         workflow, error = self._workflow(task, context)
         if error:
             return AdapterResult(False, error)
+        reference_report = {"success": True, "bound": 0, "warnings": []}
+        references = task.get("character_references") or context.get("character_references") or []
+        if references:
+            try:
+                workflow, reference_report = bind_character_references(workflow, references, model)
+            except Exception as exc:
+                return AdapterResult(False, f"角色参考图绑定失败：{exc}",
+                                     data={"reference_report": {"success": False, "warnings": [str(exc)]}})
         if not self._loopback_endpoint(model):
             return AdapterResult(False, 'ComfyUI 地址必须是本机回环地址。')
         payload = {'prompt': workflow, 'client_id': 'scicloud-' + uuid.uuid4().hex[:8]}
@@ -56,7 +65,7 @@ class ComfyUIAdapter(BaseAdapter):
             pid = result.get('prompt_id')
             if not pid:
                 return AdapterResult(False, 'ComfyUI 未返回 prompt_id。', data=result)
-            return AdapterResult(True, 'ComfyUI 工作流已提交', data={'prompt_id': pid, 'queued': True})
+            return AdapterResult(True, 'ComfyUI 工作流已提交', data={'prompt_id': pid, 'queued': True, 'reference_report': reference_report})
         except Exception as e:
             detail = ''
             if isinstance(e, HTTPError):
@@ -159,6 +168,10 @@ class ComfyUIAdapter(BaseAdapter):
         if not saved:
             return AdapterResult(False, 'ComfyUI 已完成，但媒体下载失败或文件为空。',
                                  data={'prompt_id': prompt_id, 'output_refs': refs})
-        return AdapterResult(True, f'ComfyUI 生成完成，已保存 {len(saved)} 个真实媒体文件。',
-                             outputs=saved, data={'prompt_id': prompt_id, 'output_refs': refs,
-                                                  'completed': True})
+        reference_report = submitted.data.get("reference_report") or {"success": True, "bound": 0, "warnings": []}
+        message = f'ComfyUI 生成完成，已保存 {len(saved)} 个真实媒体文件。'
+        if reference_report.get("warnings"):
+            message += f" 角色参考图提示：{len(reference_report['warnings'])} 项未注入，请检查工作流节点标记。"
+        return AdapterResult(True, message, outputs=saved,
+                             data={'prompt_id': prompt_id, 'output_refs': refs,
+                                   'completed': True, 'reference_report': reference_report})

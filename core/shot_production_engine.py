@@ -4,6 +4,8 @@ from core.config import PROJECT_DIR
 from core.production_engine import production_engine
 from core.shot_consistency import shot_fingerprint, valid_artifacts
 from core.persistent_job_store import PersistentJobStore
+from core.character_reference_comfyui import bind_character_references
+from core.reference_image_quality import reference_image_quality_engine
 
 _JOB_STORE_PATH = os.path.join(PROJECT_DIR, 'task_jobs.sqlite3')
 _job_store = PersistentJobStore(_JOB_STORE_PATH)
@@ -122,7 +124,7 @@ class ShotProductionEngine:
         if image and os.path.isfile(image):
             self._register(shot,image,'image'); result['steps'].append('existing_image')
         elif spec.get('comfy_workflow'):
-            r=production_engine.submit_comfy(spec['comfy_workflow'],'shot_media',run_id)
+            r=production_engine.submit_comfy(spec['comfy_workflow'],'shot_media',run_id,character_references=spec.get('character_reference_assets',[]))
             result['steps'].append(r)
             if not r.get('success'):
                 result['success']=False; shot['status']='blocked' if r.get('blocked') or '未启用' in r.get('message','') or '没有发现' in r.get('message','') else 'failed'
@@ -140,6 +142,19 @@ class ShotProductionEngine:
             result['success']=False; result.update(self._blocked('工作流没有产生可验证的本地媒体文件。','media_output')); shot['status']='blocked'
         if result['success']:
             shot['status']='done'; result['message']='真实媒体文件已保存并登记。'
+            references = spec.get('character_reference_assets') or []
+            generated_images = [a.get('path') for a in shot['artifacts'] if a.get('kind') == 'image']
+            checks = []
+            for generated in generated_images:
+                for reference in references:
+                    reference_path = reference.get('path')
+                    if not reference_path:
+                        continue
+                    checks.append(reference_image_quality_engine.compare(
+                        generated, reference_path, character_name=reference.get('character_name', '')))
+            if checks:
+                result['reference_image_checks'] = checks
+                result['reference_image_check_note'] = '仅为颜色/结构相似度启发式检查，不等同于人脸识别；请人工复核低分镜头。'
         shot['input_fingerprint']=fingerprint
         shot['last_result']=result; self._save(d); return self.status(run_id)
     def run_ready(self, run_id, max_shots=100):

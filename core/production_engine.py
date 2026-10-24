@@ -22,11 +22,11 @@ class ProductionEngine:
         p=self._run_dir(data['run_id'])
         with open(os.path.join(p,'run.json'),'w',encoding='utf-8') as f: json.dump(data,f,ensure_ascii=False,indent=2)
         return data
-    def submit_comfy(self, workflow, stage, run_id):
+    def submit_comfy(self, workflow, stage, run_id, character_references=None):
         model=model_hub.get('MODEL-COMFYUI')
         if not model or not model.get('enabled'): return {'success':False,'message':'ComfyUI 未启用'}
         output_dir=os.path.join(self._run_dir(run_id),'assets',stage)
-        task={'workflow':workflow,'output_dir':output_dir}
+        task={'workflow':workflow,'output_dir':output_dir,'character_references':character_references or []}
         # Do not return "success" merely because the API accepted a queue item.
         r=self.comfy.render(model,task,{})
         out=r.to_dict(); out['stage']=stage; out['run_id']=run_id

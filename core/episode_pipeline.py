@@ -12,6 +12,7 @@ from core.episode_audio_engine import episode_audio_engine
 from core.otio_export import export_canonical_to_otio, save_otio_file
 from core.shot_consistency import shot_consistency_engine
 from core.media_quality_engine import media_quality_engine
+from core.character_reference_engine import character_reference_engine
 
 class EpisodePipeline:
     """Durable episode pipeline; unavailable media capabilities remain blocked."""
@@ -59,18 +60,39 @@ class EpisodePipeline:
         shots=[]
         for i, original in enumerate(plan.get('shots',[]),1):
             shot=dict(original,shot_id=original.get('shot_id') or original.get('id') or f'SHOT-{i:03d}')
-            shots.append(shot_consistency_engine.enrich_shot(shot,bible))
+            enriched=shot_consistency_engine.enrich_shot(shot,bible)
+            enriched=character_reference_engine.bind_shot_references(enriched,project_id=eid)
+            shots.append(enriched)
         if not shots: return {'success':False,'message':'导演计划没有镜头，无法准备生产任务'}
         job=shot_production_engine.create_run(eid,shots)
         d['shot_run_id']=job['run_id']; d['stage']='shots'
-        d['stages']['shots']={'status':'done','result':{'shot_run_id':job['run_id'],'shot_count':len(job['shots'])}}
+        reference_audit=character_reference_engine.audit(job['shots'])
+        d['stages']['shots']={'status':'done','result':{'shot_run_id':job['run_id'],'shot_count':len(job['shots']),'character_reference_audit':reference_audit}}
         return self._save(d)
+    def refresh_character_references(self,eid):
+        """Rebind latest character reference assets; changed bindings invalidate shot caches."""
+        d=self.load(eid)
+        run_id=d.get('shot_run_id')
+        if not run_id:
+            return {'success':True,'reused':False,'message':'镜头任务尚未准备，后续准备时会绑定参考图'}
+        job=shot_production_engine.load(run_id)
+        for shot in job.get('shots',[]):
+            spec=shot.get('spec') or {}
+            shot['spec']=character_reference_engine.bind_shot_references(spec,project_id=eid)
+        shot_production_engine._save(job)
+        refreshed=shot_production_engine.status(run_id)
+        audit=character_reference_engine.audit([x.get('spec') or {} for x in refreshed.get('shots',[])])
+        d.setdefault('stages', {}).setdefault('shots', {}).setdefault('result', {})['character_reference_audit']=audit
+        self._save(d)
+        return {'success':True,'run_id':run_id,'audit':audit,'status':refreshed.get('status')}
+
     def run_media(self,eid,max_shots=100):
         d=self.load(eid)
         if not d.get('shot_run_id'):
             prepared=self.prepare_shots(eid)
             if not prepared.get('success',True): return self._block(self.load(eid),'shots',prepared.get('message','无法准备镜头'))
             d=self.load(eid)
+        self.refresh_character_references(eid)
         r=shot_production_engine.run_ready(d['shot_run_id'],max_shots=max_shots)
         if r.get('status')=='completed': stage_status='done'
         elif r.get('status')=='failed': stage_status='failed'
