@@ -53,28 +53,44 @@ class DirectorPlanPage(QWidget):
             raise ValueError(f'镜头总时长为 {actual:g} 秒，与目标 {target:g} 秒不一致；计划未进入生产队列。')
         return plan
     def generate(self):
-        idea = self.idea.toPlainText().strip()
+        idea=self.idea.toPlainText().strip()
         if not idea:
-            QMessageBox.warning(self, '需要创意内容', '请先输入一句话创意，再生成导演计划。')
+            QMessageBox.warning(self,'需要创意内容','请先输入一句话创意，再生成导演计划。')
             self.queue_btn.setEnabled(False); self.plan=None
             return
-        try:
-            plan=director_plan_engine.create_plan(idea,self.title.text().strip() or None,self.duration.value(),self.ratio.currentText())
-            plan=self._validate_plan(plan)
+        if self.worker and self.worker.isRunning(): return
+        self.plan=None; self.queue_btn.setEnabled(False); self.generate_btn.setEnabled(False)
+        self.generate_btn.setText('正在生成…')
+        self.summary.setText('正在生成导演计划；本机 Ollama 推理期间界面仍可操作。')
+        worker=PlanWorker(idea,self.title.text().strip() or None,self.duration.value(),self.ratio.currentText())
+        self.worker=worker; _ACTIVE_WORKERS.add(worker)
+        worker.plan_ready.connect(self._on_plan_ready)
+        worker.plan_failed.connect(self._on_plan_failed)
+        worker.finished.connect(lambda w=worker: _ACTIVE_WORKERS.discard(w))
+        worker.start()
+
+    def _restore_generate_button(self):
+        self.generate_btn.setEnabled(True); self.generate_btn.setText('✨ 生成导演计划')
+
+    def _on_plan_ready(self, plan):
+        self._restore_generate_button()
+        try: plan=self._validate_plan(plan)
         except Exception as exc:
-            self.plan=None; self.queue_btn.setEnabled(False)
-            self.summary.setText('导演计划生成失败，请检查创意或查看日志。')
-            QMessageBox.warning(self,'导演计划生成失败',str(exc))
-            return
+            self.plan=None; self.queue_btn.setEnabled(False); self.summary.setText('导演计划校验失败，未进入生产队列。')
+            QMessageBox.warning(self,'导演计划校验失败',str(exc)); return
         self.plan=plan
         generation=plan.get('generation',{})
         mode='本地 Ollama' if generation.get('mode')=='local_ollama' else '本地规则兜底'
         self.summary.setText(f"{plan.get('title','未命名项目')}  ·  {plan['intent'].get('genre','原创短剧')}  ·  {len(plan['shots'])} 个镜头  ·  {len(plan['tasks'])} 个生产任务  ·  {sum(float(s.get('duration',0)) for s in plan['shots']):g} 秒  ·  {mode}")
         self.summary.setToolTip(generation.get('message','导演计划已生成'))
         self.tasks.clear()
-        for task in plan['tasks']:
-            self.tasks.addItem(f"{task.get('id','TASK')}   {task.get('name',task.get('type','生产任务'))}   ·   等待执行")
+        for task in plan['tasks']: self.tasks.addItem(f"{task.get('id','TASK')}   {task.get('name',task.get('type','生产任务'))}   ·   等待执行")
         self.queue_btn.setEnabled(True)
+
+    def _on_plan_failed(self, message):
+        self._restore_generate_button(); self.plan=None; self.queue_btn.setEnabled(False)
+        self.summary.setText('导演计划生成失败，请检查创意或查看日志。')
+        QMessageBox.warning(self,'导演计划生成失败',message)
 
     def enqueue(self):
         if not self.plan: return
