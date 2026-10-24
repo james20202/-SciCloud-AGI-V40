@@ -13,6 +13,7 @@ from core.otio_export import export_canonical_to_otio, save_otio_file
 from core.shot_consistency import shot_consistency_engine
 from core.media_quality_engine import media_quality_engine
 from core.character_reference_engine import character_reference_engine
+from core.script_asset_extractor import script_asset_extractor
 
 class EpisodePipeline:
     """Durable episode pipeline; unavailable media capabilities remain blocked."""
@@ -34,8 +35,10 @@ class EpisodePipeline:
         ep=episode_engine.create_episode(idea,title,duration,ratio)
         plan=next((p for p in director_plan_engine.load_plans() if p.get('plan_id')==ep.get('plan_id')),None)
         if plan is None: raise RuntimeError(f"Director Plan {ep.get('plan_id')} was not found after episode creation")
+        asset_extraction = script_asset_extractor.extract(plan, project_id=ep['episode_id'])
         d={'episode_id':ep['episode_id'],'plan_id':ep['plan_id'],'workflow_id':ep['workflow_id'],'title':ep['title'],'idea':idea,'duration_seconds':int(duration),'aspect_ratio':ratio,'status':'ready','stage':'plan','stages':{x:{'status':'pending','result':None} for x in self.STAGES},'shot_run_id':None,'final_video':None,'publish_package':None,'created_at':self._now(),'updated_at':self._now()}
-        d['stages']['plan']={'status':'done','result':{'plan_id':plan.get('plan_id'),'shot_count':len(plan.get('shots',[]))}}
+        d['asset_extraction']=asset_extraction
+        d['stages']['plan']={'status':'done','result':{'plan_id':plan.get('plan_id'),'shot_count':len(plan.get('shots',[])),'asset_extraction':asset_extraction}}
         return self._save(d)
     def status(self,eid):
         d=self.load(eid)

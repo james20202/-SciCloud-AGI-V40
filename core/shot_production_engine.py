@@ -6,6 +6,7 @@ from core.shot_consistency import shot_fingerprint, valid_artifacts
 from core.persistent_job_store import PersistentJobStore
 from core.character_reference_comfyui import bind_character_references
 from core.reference_image_quality import reference_image_quality_engine
+from core.shot_retry_policy import prepare_retry
 
 _JOB_STORE_PATH = os.path.join(PROJECT_DIR, 'task_jobs.sqlite3')
 _job_store = PersistentJobStore(_JOB_STORE_PATH)
@@ -165,9 +166,21 @@ class ShotProductionEngine:
                 r=self.produce_shot(run_id,shot['shot_id']); count+=1
                 if r.get('status')=='failed': break
         return self.status(run_id)
+    def retry_failed_shots(self, run_id, shot_ids=None):
+        """Retry only failed/blocked shots; completed shots and their outputs are untouched."""
+        d = self.load(run_id)
+        result = prepare_retry(d, requested_ids=shot_ids)
+        self._save(result['run'])
+        status = self.status(run_id)
+        status['retry_count'] = result['retry_count']
+        status['retry_shot_ids'] = result['retry_shot_ids']
+        status['message'] = (
+            f"已重新排队 {result['retry_count']} 个失败镜头；已完成镜头保留。"
+            if result['retry_count'] else "没有匹配的失败/阻塞镜头，无需重试。"
+        )
+        return self._save(status)
+
     def retry_blocked(self, run_id):
-        d=self.load(run_id)
-        for s in d['shots']:
-            if s['status'] in ('blocked','failed'): s['status']='ready'
-        return self._save(d)
+        """Backward-compatible alias for retrying all failed/blocked shots."""
+        return self.retry_failed_shots(run_id)
 shot_production_engine=ShotProductionEngine()
