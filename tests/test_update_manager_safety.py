@@ -27,3 +27,11 @@ def test_accepts_flat_upgrade_zip(tmp_path, monkeypatch):
     assert manager._stage(package) is True
     assert len(launched) == 1
     assert (Path(launched[0]) / 'main.py').is_file()
+
+def test_rejects_parent_directory_entry(tmp_path):
+    package = tmp_path / "unsafe.zip"
+    with zipfile.ZipFile(package, "w") as z:
+        z.writestr("../outside.txt", "must not be extracted")
+    with pytest.raises(ValueError, match="不安全路径"):
+        UpdateManager()._stage(package)
+    assert not (tmp_path.parent / "outside.txt").exists()
