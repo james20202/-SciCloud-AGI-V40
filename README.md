@@ -23,3 +23,9 @@ python3 -m pip install -r requirements.txt
 - `projects/` 项目文件
 - `output/` 成片输出
 - `backups/` 自动升级备份
+
+
+## V40.302.0 变更
+- 修复导演计划的镜头总时长分配、分镜字段保留和工作流分镜 ID 关联。
+- 修复首页开始创作、快捷操作、查看全部和继续创作等按钮的实际导航/信号连接。
+- 增加自动回归测试和 GitHub Actions 检查。

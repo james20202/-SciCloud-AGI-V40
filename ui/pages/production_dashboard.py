@@ -1,4 +1,5 @@
 import os
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFrame,QTextEdit,QProgressBar,QGridLayout
 from PySide6.QtGui import QPixmap
 from core.ai_scheduler import ai_scheduler
@@ -7,6 +8,9 @@ ASSET_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 BG_PATH = os.path.join(ASSET_DIR, 'bg_main.png')
 
 class ProductionDashboard(QWidget):
+    create_requested = Signal(str)
+    navigate_requested = Signal(str)
+
     def __init__(self):
         super().__init__(); self.build()
 
@@ -65,7 +69,7 @@ class ProductionDashboard(QWidget):
 
         # ===== 制作流水线 =====
         pl=QHBoxLayout(); pt=QLabel('制作流水线'); pt.setObjectName('SectionTitle'); pl.addWidget(pt); pl.addStretch()
-        more=QPushButton('查看全部 >'); more.setObjectName('Secondary'); more.setFixedHeight(28); pl.addWidget(more); left.addLayout(pl)
+        more=QPushButton('查看全部 >'); more.setObjectName('Secondary'); more.setFixedHeight(28); more.clicked.connect(lambda: self.navigate_requested.emit('生产')); pl.addWidget(more); left.addLayout(pl)
         steps=QHBoxLayout(); steps.setSpacing(8)
         steps.addWidget(self.step('剧本','已完成','Ok'),1)
         steps.addWidget(self.step('分镜','进行中 65%','Warn'),1)
@@ -76,7 +80,7 @@ class ProductionDashboard(QWidget):
 
         # ===== 热门模板 =====
         tp=QHBoxLayout(); tt=QLabel('热门模板'); tt.setObjectName('SectionTitle'); tp.addWidget(tt); tp.addStretch()
-        moret=QPushButton('查看更多 >'); moret.setObjectName('Secondary'); moret.setFixedHeight(28); tp.addWidget(moret); left.addLayout(tp)
+        moret=QPushButton('查看更多 >'); moret.setObjectName('Secondary'); moret.setFixedHeight(28); moret.clicked.connect(lambda: self.navigate_requested.emit('资产')); tp.addWidget(moret); left.addLayout(tp)
         tgs=QHBoxLayout(); tgs.setSpacing(8)
         tgs.addWidget(self.template('修仙玄幻','12.8万次使用'),1)
         tgs.addWidget(self.template('都市异能','8.6万次使用'),1)
@@ -108,7 +112,7 @@ class ProductionDashboard(QWidget):
 
         rec=QFrame(); rec.setObjectName('PanelCard'); rec.setFixedWidth(W); rcl=QVBoxLayout(rec); rcl.setContentsMargins(16,14,16,14); rcl.setSpacing(6)
         rh=QHBoxLayout(); r1=QLabel('最近项目'); r1.setObjectName('SectionTitle'); rh.addWidget(r1); rh.addStretch()
-        r2=QPushButton('查看全部 >'); r2.setObjectName('Secondary'); r2.setFixedHeight(26); rh.addWidget(r2); rcl.addLayout(rh)
+        r2=QPushButton('查看全部 >'); r2.setObjectName('Secondary'); r2.setFixedHeight(26); r2.clicked.connect(lambda: self.navigate_requested.emit('项目')); rh.addWidget(r2); rcl.addLayout(rh)
         for name,time,status,tone in [('仙侠修仙项目','3小时前','创作中','Warn'),('都市异能故事','1天前','已完成','Ok'),('星际冒险','2天前','已完成','Ok'),('古风言情','3天前','已完成','Ok')]:
             rr=QHBoxLayout(); n=QLabel(name); n.setStyleSheet('font-size:12px;font-weight:650;color:#e3e0d7;'); rr.addWidget(n); rr.addStretch()
             t=QLabel(time); t.setObjectName('Muted'); rr.addWidget(t)
@@ -121,12 +125,29 @@ class ProductionDashboard(QWidget):
         cl.addLayout(body)
 
     def start(self):
-        idea=self.idea.toPlainText().strip() or '未填写创意'
-        try: ai_scheduler.create_task('V40创作项目','001')
-        except Exception: pass
+        idea = self.idea.toPlainText().strip()
+        if not idea:
+            self.idea.setFocus()
+            self.idea.setPlaceholderText('请先输入创意，再开始创作。')
+            return
+        self.create_requested.emit(idea)
 
     def quick(self, key):
-        self.idea.setPlainText(f'请帮我{key}：一个修仙少年从凡人到仙尊的成长故事')
+        routes = {
+            '生成剧本': '创作',
+            '分镜设计': '分镜',
+            '角色设定': '人物场景',
+            '场景生成': '人物场景',
+            '一键生成视频': '一键成片',
+        }
+        if key == '生成剧本':
+            idea = self.idea.toPlainText().strip() or '创作一部60秒玄幻修仙短剧：主角从废柴逆袭，结尾留下悬念。'
+            self.idea.setPlainText(idea)
+            self.create_requested.emit(idea)
+            return
+        target = routes.get(key)
+        if target:
+            self.navigate_requested.emit(target)
 
     def goto_project(self):
-        pass
+        self.navigate_requested.emit('项目')

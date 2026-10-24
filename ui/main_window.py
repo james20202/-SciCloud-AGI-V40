@@ -44,7 +44,12 @@ class MainWindow(QMainWindow):
         bl.addWidget(self.build_dock())
         self.stack = QStackedWidget(); self.stack.setObjectName('ContentStack'); bl.addWidget(self.stack,1)
         outer.addWidget(body,1)
-        self.register_pages(); self.select('驾驶舱')
+        self.register_pages()
+        dashboard = self.pages.get('驾驶舱')
+        if dashboard:
+            dashboard.create_requested.connect(self.open_creation_with_idea)
+            dashboard.navigate_requested.connect(self.select)
+        self.select('驾驶舱')
 
     def build_topbar(self):
         bar=QFrame(); bar.setObjectName('Topbar'); l=QHBoxLayout(bar); l.setContentsMargins(18,10,18,10); l.setSpacing(10)
@@ -81,6 +86,12 @@ class MainWindow(QMainWindow):
         self.add_page('模型',ModelCenter()); self.add_page('模型诊断',ModelDiagnosticsPage()); self.add_page('模型路由',ModelRouterCenter()); self.add_page('后期',VideoCenter()); self.add_page('发布',PublishCenter()); self.add_page('系统',SystemCenter()); self.add_page('项目',ProjectMatrix()); self.add_page('AI中心',AICenter()); self.add_page('批量生产',BatchCenter())
         if PipelineCenter: self.add_page('自动流水线',PipelineCenter())
     def add_page(self,key,page): self.pages[key]=page; self.stack.addWidget(page)
+
+    def open_creation_with_idea(self, idea):
+        page = self.pages.get('创作')
+        if page is not None and hasattr(page, 'idea'):
+            page.idea.setPlainText(idea)
+        self.select('创作')
     def select(self,key):
         routes={'驾驶舱':'驾驶舱','创作':'创作','生产':'生产','资产':'资产','模型':'模型','后期':'后期','系统':'系统'}
         target=routes.get(key,key); page=self.pages.get(target) or self.pages.get(key)
