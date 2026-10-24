@@ -143,3 +143,14 @@ python3 -m pip install -r requirements.txt
 - 启动后将上次进程遗留的 queued/running/cancelling 任务标记为 interrupted；镜头运行恢复时把中断中的镜头重新排队，不把旧的 running 状态伪装成正在执行。
 - 采用 MIT 项目 StudioLite 的 `filmmaker/job_store.py` 持久化任务存储实现作为直接代码复用基础，保留版权与 MIT 许可证，详见 THIRD_PARTY_NOTICES.md。
 - 新增 SQLite 重启恢复、任务更新持久化、JSON/SQLite 镜头运行记录同步和旧版运行记录兼容测试。
+
+
+## V40.408.0 · Offline TTS & Media Quality Gate
+
+- 新增离线配音适配器：优先使用 macOS 自带 say，也可通过环境变量接入本机 Piper CLI；不会自动下载语音模型、不访问云端接口、不消耗在线 Token。
+- 每段对白先剔除括号中的舞台/音效指示；本地 TTS 可用时为对白生成独立音频片段，并按镜头时间线混音。若本机没有可用语音或中文语音，系统明确报告并保留字幕，不会伪造配音成功。
+- 新增成片媒体质量扫描：FFprobe 检查视频流、时长、画面尺寸和音频流；FFmpeg 检测长黑帧与长静音，作为人工复核警告，不会把有意黑场或无对白静音直接判成失败。
+- QC 结果保存黑帧/静音时间区间、错误码和警告，并继续阻止无效视频流或严重时长偏差的成片进入发布阶段。
+- 直接适配 MIT 许可的 creativeone86/tv-series-pipeline/lib/text-control.ts 中对白清理、避免把对白原文塞进画面提示词、CJK 字体发现等辅助逻辑；保留版权与完整 MIT 许可文本，详见 THIRD_PARTY_NOTICES.md。
+- 可配置项：SCICLOUD_TTS_BACKEND=auto|say|piper|off、SCICLOUD_TTS_VOICE、SCICLOUD_PIPER_MODEL、CJK_FONT_FILE。Piper 需用户自行安装可执行文件和本地模型；软件不会自动下载。
+- 新增本地 TTS、对白清理、提示词净化、黑帧/静音诊断与视频流质检回归测试。CI 自动测试不代表已在用户 Mac 上验证实际语音、中文发音或真实成片渲染。
