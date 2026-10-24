@@ -53,7 +53,7 @@ class ProductionEngine:
         if not r['success']: return r
         current=base
         if audio:
-            out=os.path.join(rd,'with_audio.mp4'); r=local_media_engine.mux_audio(current,audio,out)
+            out=os.path.join(rd,'with_audio.mp4'); r=local_media_engine.mix_audio_with_video(current,audio,out)
             if not r['success']: return r
             current=out
         if subtitles:

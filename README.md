@@ -118,3 +118,12 @@ python3 -m pip install -r requirements.txt
 - 标准化前后通过 FFprobe 检查媒体；标准化失败会阻断流水线并保留错误详情，不会继续发布错误时长的成片。
 - 若输入镜头带音轨，则按镜头目标时长补齐/裁切音频；没有音轨的镜头保持无音轨，不伪造配音。最终成片仍须通过目标总时长 QC。
 - 新增镜头标准化单元测试；CI 结果只验证代码与自动化测试，不代表已在用户的 Mac 上完成真实 ComfyUI/模型渲染。
+
+
+## V40.405.0 · Dialogue Timeline & Audio Mix
+- 从镜头规格中的对白字段生成与镜头绝对时间码对齐的 SRT 字幕；支持字符串对白、带说话人字段的对白对象和对白列表。
+- 汇总每个镜头已登记的有效音频素材，按镜头在单集时间线中的起始时间延迟定位，并使用本地 FFmpeg 混合成对白音轨；不会把缺失音频伪装成配音。
+- 将对白音轨叠加到成片原有音轨上，保留原视频音频并降低底音轨音量；没有原音轨时直接使用对白音轨。
+- 有对白时自动烧录字幕，并把 SRT、对白混音、canonical timeline、成片和 SHA-256 清单一并放入发布包。
+- 参考 MIT 许可的 [Comic-drama](https://github.com/tccnnd/Comic-drama) 时间线契约、[LocalMiniDrama](https://github.com/xuanyustudio/LocalMiniDrama) 的阶段化/可恢复制作流程，以及 [tv-series-pipeline](https://github.com/creativeone86/tv-series-pipeline) 的分角色对白、时间轴和字幕工作流。为减少重复开发，`core/otio_export.py` 直接复用了 Comic-drama `backend/timeline_export.py` 中的 OTIO 时间/片段辅助代码并适配 SciCloud 时间线；第三方 MIT 版权与许可全文保存在 `THIRD_PARTY_NOTICES.md`。
+- 新增对白绝对时间码、音轨延迟混音、原音轨保留的回归测试。CI 通过不代表已在用户 Mac 上完成真实模型渲染或中文字体显示验收。

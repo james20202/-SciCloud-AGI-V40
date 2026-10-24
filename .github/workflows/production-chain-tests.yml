@@ -37,10 +37,10 @@ jobs:
         run: python -m pytest -q tests
       - name: Build tested upgrade ZIP
         run: |
-          zip -r SciCloud_AGI_V40_404_Upgrade.zip core ui modules main.py main_backup.py requirements.txt README.md install.command launch.command apply_update.py clean_project.sh "SciCloud AGI V40.app" production.json projects.json publish.json
+          zip -r SciCloud_AGI_V40_405_Upgrade.zip core ui modules main.py main_backup.py requirements.txt README.md THIRD_PARTY_NOTICES.md install.command launch.command apply_update.py clean_project.sh "SciCloud AGI V40.app" production.json projects.json publish.json
       - uses: actions/upload-artifact@v4
         with:
-          name: SciCloud-AGI-V40.404.0-upgrade
-          path: SciCloud_AGI_V40_404_Upgrade.zip
+          name: SciCloud-AGI-V40.405.0-upgrade
+          path: SciCloud_AGI_V40_405_Upgrade.zip
           if-no-files-found: error
           retention-days: 30
