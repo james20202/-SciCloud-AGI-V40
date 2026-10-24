@@ -3,6 +3,21 @@ from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton
 from core.director_plan import director_plan_engine
 from core.workflow_engine import workflow_engine
 
+_ACTIVE_WORKERS=set()
+
+class PlanWorker(QThread):
+    plan_ready=Signal(object)
+    plan_failed=Signal(str)
+    def __init__(self, idea, title, duration, ratio):
+        super().__init__()
+        self.args=(idea,title,duration,ratio)
+    def run(self):
+        try:
+            self.plan_ready.emit(director_plan_engine.create_plan(*self.args))
+        except Exception as exc:
+            self.plan_failed.emit(str(exc))
+
+
 class DirectorPlanPage(QWidget):
     def __init__(self, initial_idea=''):
         super().__init__(); self.plan=None; self.initial_idea=initial_idea; self.build()
