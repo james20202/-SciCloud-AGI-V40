@@ -127,3 +127,11 @@ python3 -m pip install -r requirements.txt
 - 有对白时自动烧录字幕，并把 SRT、对白混音、canonical timeline、成片和 SHA-256 清单一并放入发布包。
 - 参考 MIT 许可的 [Comic-drama](https://github.com/tccnnd/Comic-drama) 时间线契约、[LocalMiniDrama](https://github.com/xuanyustudio/LocalMiniDrama) 的阶段化/可恢复制作流程，以及 [tv-series-pipeline](https://github.com/creativeone86/tv-series-pipeline) 的分角色对白、时间轴和字幕工作流。为减少重复开发，`core/otio_export.py` 直接复用了 Comic-drama `backend/timeline_export.py` 中的 OTIO 时间/片段辅助代码并适配 SciCloud 时间线；第三方 MIT 版权与许可全文保存在 `THIRD_PARTY_NOTICES.md`。
 - 新增对白绝对时间码、音轨延迟混音、原音轨保留的回归测试。CI 通过不代表已在用户 Mac 上完成真实模型渲染或中文字体显示验收。
+
+
+## V40.406.0 · Consistency Bible & Resumable Shot Jobs
+- 新增本地一致性圣经：从导演计划提取稳定人物 ID、外观、服装、标志特征、场景 ID、场景视觉锚点、光照与色彩锚点，并注入每个镜头的规格/视觉提示词；未明确关联的人物不会被系统臆测绑定。
+- 镜头任务保存输入指纹。断点续跑时，只有输入未变且输出文件仍存在、非空的镜头才复用；提示词或镜头参数变化会自动失效旧缓存，缺失/空文件不会继续被算作完成。
+- 镜头运行状态增加可恢复逻辑：支持继续 ready/blocked/failed 镜头，保留尝试次数、上次错误与有效产物记录；已完成且输入未变的镜头不重复触发生成。
+- 增加一致性锚点、输入指纹、缓存失效和素材有效性回归测试。
+- 参考 MIT 许可的 [LocalMiniDrama](https://github.com/xuanyustudio/LocalMiniDrama) 对人物/场景资产复用和可重跑工作流的公开设计；本版本相关模块为独立实现，未复制其源文件。此前直接复用的 Comic-drama MIT 代码许可仍见 THIRD_PARTY_NOTICES.md。
