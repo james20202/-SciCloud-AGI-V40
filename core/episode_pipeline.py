@@ -12,6 +12,7 @@ from core.episode_audio_engine import episode_audio_engine
 from core.otio_export import export_canonical_to_otio, save_otio_file
 from core.shot_consistency import shot_consistency_engine
 from core.media_quality_engine import media_quality_engine
+from core.character_reference_engine import character_reference_engine
 
 class EpisodePipeline:
     """Durable episode pipeline; unavailable media capabilities remain blocked."""
@@ -59,11 +60,14 @@ class EpisodePipeline:
         shots=[]
         for i, original in enumerate(plan.get('shots',[]),1):
             shot=dict(original,shot_id=original.get('shot_id') or original.get('id') or f'SHOT-{i:03d}')
-            shots.append(shot_consistency_engine.enrich_shot(shot,bible))
+            enriched=shot_consistency_engine.enrich_shot(shot,bible)
+            enriched=character_reference_engine.bind_shot_references(enriched,project_id=eid)
+            shots.append(enriched)
         if not shots: return {'success':False,'message':'导演计划没有镜头，无法准备生产任务'}
         job=shot_production_engine.create_run(eid,shots)
         d['shot_run_id']=job['run_id']; d['stage']='shots'
-        d['stages']['shots']={'status':'done','result':{'shot_run_id':job['run_id'],'shot_count':len(job['shots'])}}
+        reference_audit=character_reference_engine.audit(job['shots'])
+        d['stages']['shots']={'status':'done','result':{'shot_run_id':job['run_id'],'shot_count':len(job['shots']),'character_reference_audit':reference_audit}}
         return self._save(d)
     def run_media(self,eid,max_shots=100):
         d=self.load(eid)
