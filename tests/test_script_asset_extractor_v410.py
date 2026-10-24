@@ -11,7 +11,7 @@ class Registry:
 
     def register(self, **kwargs):
         self.counter += 1
-        item = {"asset_id": f"A{self.counter}", **kwargs}
+        item = {"asset_id": f"A{self.counter}", "type": kwargs["asset_type"], "name": kwargs["name"], "entity_id": kwargs["entity_id"], "project_id": kwargs["project_id"], "metadata": kwargs["metadata"]}
         self.items.append(item)
         return item
 
