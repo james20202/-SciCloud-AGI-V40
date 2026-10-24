@@ -6,6 +6,7 @@ from core.director_plan import director_plan_engine
 from core.shot_production_engine import shot_production_engine
 from core.production_engine import production_engine
 from core.local_media_engine import local_media_engine
+from core.episode_timeline import build_episode_timeline
 from core.publish_pack_engine import publish_pack_engine
 
 class EpisodePipeline:
@@ -75,39 +76,68 @@ class EpisodePipeline:
         if d['stages']['media']['status']!='done':
             return self._block(d,'assemble','镜头媒体尚未全部完成')
         job=shot_production_engine.load(d['shot_run_id'])
-        # Keep shot order deterministic; prefer a real video, otherwise turn its image into a real MP4 clip.
-        clips=[]
+        clips=[]; clip_records=[]
         clip_dir=os.path.join(self.project_dir,'episode_pipelines',eid,'image_clips')
         os.makedirs(clip_dir,exist_ok=True)
         for shot in sorted(job.get('shots',[]),key=lambda s:s.get('index',0)):
             artifacts=shot.get('artifacts',[])
-            videos=[a.get('path') for a in artifacts if a.get('kind')=='video'
+            videos=[a for a in artifacts if a.get('kind')=='video'
                     and os.path.isfile(a.get('path','')) and os.path.getsize(a.get('path',''))>0]
+            source_kind='video'
             if videos:
-                clips.append(videos[0])
-                continue
-            images=[a.get('path') for a in artifacts if a.get('kind')=='image'
-                    and os.path.isfile(a.get('path','')) and os.path.getsize(a.get('path',''))>0]
-            if images:
+                path=videos[0]['path']
+                spec=shot.get('spec') or {}
+                probe=local_media_engine.probe(path)
+                duration=probe.get('duration_seconds') if probe.get('success') else (spec.get('duration_seconds') or spec.get('duration') or 5)
+            else:
+                images=[a for a in artifacts if a.get('kind')=='image'
+                        and os.path.isfile(a.get('path','')) and os.path.getsize(a.get('path',''))>0]
+                if not images:
+                    return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 缺少有效视频和图片素材")
+                source_kind='image_to_video_fallback'
                 spec=shot.get('spec') or {}
                 duration=spec.get('duration_seconds') or spec.get('duration') or 5
-                clip=os.path.join(clip_dir,f"{shot.get('index',0):04d}_{shot.get('shot_id','shot')}.mp4")
-                rendered=local_media_engine.image_to_video(images[0],clip,duration_seconds=duration)
+                path=os.path.join(clip_dir,f"{shot.get('index',0):04d}_{shot.get('shot_id','shot')}.mp4")
+                rendered=local_media_engine.image_to_video(images[0]['path'],path,duration_seconds=duration)
                 if not rendered.get('success'):
                     return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 图片转视频失败：{rendered.get('message','未知错误')}",rendered)
-                clips.append(clip)
+            clips.append(path)
+            clip_records.append({'shot_id':shot.get('shot_id'),'scene_id':(shot.get('spec') or {}).get('scene_id'),
+                                 'path':path,'source_kind':source_kind,'duration_seconds':duration,
+                                 'spec':shot.get('spec') or {}})
         if not clips:
             return self._block(d,'assemble','没有真实视频或可转换为视频的分镜图片')
         r=production_engine.assemble(clips,run_id='RUN-'+d['episode_id'].replace('EP-',''))
         if not r.get('success'):
             return self._block(d,'assemble',r.get('message','FFmpeg 组装失败'),r)
         d['final_video']=r.get('final_output')
+        timeline_path=os.path.join(self.root,eid,'canonical_timeline.json')
+        timeline_result=build_episode_timeline(d,job,clip_records,timeline_path,d['final_video'])
+        r['canonical_timeline']=timeline_result.get('path')
+        r['timeline_summary']=timeline_result.get('timeline',{}).get('summary',{})
         d['stages']['assemble']={'status':'done','result':r}
         d['stage']='qc'
         return self.status(self._save(d)['episode_id'])
     def qc(self,eid):
-        d=self.load(eid); p=d.get('final_video'); ok=bool(p and os.path.isfile(p) and os.path.getsize(p)>0)
-        d['stages']['qc']={'status':'done' if ok else 'blocked','result':{'success':ok,'path':p,'size':os.path.getsize(p) if ok else 0}}
+        d=self.load(eid); p=d.get('final_video')
+        basic=bool(p and os.path.isfile(p) and os.path.getsize(p)>0)
+        probe=local_media_engine.probe(p) if basic else {'success':False,'message':'成片文件不存在或为空'}
+        expected=float(d.get('duration_seconds') or 0)
+        actual=float(probe.get('duration_seconds') or 0) if probe.get('success') else 0.0
+        tolerance=max(3.0,expected*0.08)
+        duration_ok=bool(probe.get('success') and (expected<=0 or abs(actual-expected)<=tolerance))
+        ok=bool(basic and probe.get('success') and duration_ok)
+        message='成片媒体探测通过' if ok else (
+            probe.get('message') if not probe.get('success') else
+            f'成片时长与目标不符：目标 {expected:.1f}s，实际 {actual:.1f}s，允许误差 ±{tolerance:.1f}s')
+        timeline_path=os.path.join(self.root,eid,'canonical_timeline.json')
+        d['stages']['qc']={'status':'done' if ok else 'blocked','result':{
+            'success':ok,'path':p,'size':os.path.getsize(p) if basic else 0,
+            'probe':probe.get('data') if probe.get('success') else None,
+            'duration_seconds':actual,'expected_duration_seconds':expected,
+            'duration_tolerance_seconds':tolerance,'duration_ok':duration_ok,
+            'timeline_path':timeline_path if os.path.isfile(timeline_path) else None,
+            'message':message}}
         d['stage']='publish'
         return self.status(self._save(d)['episode_id'])
     def publish(self,eid):
