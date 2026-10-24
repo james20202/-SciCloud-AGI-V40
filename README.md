@@ -154,3 +154,14 @@ python3 -m pip install -r requirements.txt
 - 直接适配 MIT 许可的 creativeone86/tv-series-pipeline/lib/text-control.ts 中对白清理、避免把对白原文塞进画面提示词、CJK 字体发现等辅助逻辑；保留版权与完整 MIT 许可文本，详见 THIRD_PARTY_NOTICES.md。
 - 可配置项：SCICLOUD_TTS_BACKEND=auto|say|piper|off、SCICLOUD_TTS_VOICE、SCICLOUD_PIPER_MODEL、CJK_FONT_FILE。Piper 需用户自行安装可执行文件和本地模型；软件不会自动下载。
 - 新增本地 TTS、对白清理、提示词净化、黑帧/静音诊断与视频流质检回归测试。CI 自动测试不代表已在用户 Mac 上验证实际语音、中文发音或真实成片渲染。
+
+
+## V40.409.0 · Character Reference Lock & Continuity Audit
+
+- 素材中心新增“绑定参考图”：可从人物资产直接选角色，导入 PNG/JPG/WEBP/BMP；参考图自动复制进资产目录，登记 SHA-256、尺寸和版本号，原文件不会被移动或覆盖。
+- 镜头准备阶段根据明确的角色 ID/名称绑定最新参考图，不猜测未标注角色；每次执行媒体生产前刷新引用，参考图版本变化会改变镜头输入指纹并使旧缓存失效。
+- 本地 ComfyUI 参考图注入：仅对明确标记的 LoadImage 节点注入上传图。节点标题使用 `SciCloud Character Ref: <角色ID或名称>`，或把 image 输入设为 `__SCICLOUD_CHARACTER_REFERENCE__:<角色ID>`。未匹配节点时会明确警告，不谎称图片已注入模型。
+- 新增参考图覆盖率统计和生成图片对参考图的颜色直方图/结构哈希启发式评分。评分仅用于提示复核，不是人脸识别，也不会单独决定人物身份。
+- 从 MIT 许可的 `tccnnd/Comic-drama/backend/consistency_validator.py` 直接适配颜色直方图、平均哈希和汉明相似度算法；版权/许可证信息见 `THIRD_PARTY_NOTICES.md`。
+- 增加 Pillow 依赖用于校验图像可解码、读取尺寸和执行启发式图像比较；不下载生成模型、不调用云端图像服务。
+- 新增参考图版本管理、工作流节点注入、错误工作流保护、视觉相似度和缺失文件回归测试。
