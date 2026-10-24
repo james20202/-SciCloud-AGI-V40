@@ -65,7 +65,7 @@ class MediaQualityEngine:
         black = [{"start": float(a), "end": float(b), "duration": float(c)}
                  for a, b, c in re.findall(r"black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)", log)]
         silence = [{"start": float(a), "end": float(b)}
-                   for a, b in re.findall(r"silence_start:([\d.]+).*?silence_end:([\d.]+)", log)]
+                   for a, b in re.findall(r"silence_start:([\d.]+).*?silence_end:([\d.]+)", log, re.S)]
         if black:
             warnings.append({"code": "black_frames", "count": len(black), "segments": black,
                              "message": "检测到长黑帧区间；可能是有意转场，请人工复核"})
