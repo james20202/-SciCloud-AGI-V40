@@ -23,6 +23,7 @@ class EpisodePipeline:
     def load(self,eid):
         with open(self._path(eid),encoding='utf-8') as f: return json.load(f)
     def create(self,idea,title=None,duration=60,ratio='9:16'):
+        if not str(idea or '').strip(): raise ValueError('请先填写剧情创意')
         ep=episode_engine.create_episode(idea,title,duration,ratio)
         plan=next((p for p in director_plan_engine.load_plans() if p.get('plan_id')==ep.get('plan_id')),None)
         if plan is None: raise RuntimeError(f"Director Plan {ep.get('plan_id')} was not found after episode creation")
@@ -35,8 +36,13 @@ class EpisodePipeline:
         blocked=[k for k,v in d['stages'].items() if v.get('status')=='blocked']
         failed=[k for k,v in d['stages'].items() if v.get('status')=='failed']
         d['completed_stages']=completed; d['blocked_stages']=blocked; d['failed_stages']=failed
-        d['progress']=round(len(completed)/len(self.STAGES)*100,1)
-        d['status']='completed' if 'publish' in completed else ('blocked' if blocked else ('failed' if failed else ('running' if completed else 'ready')))
+        fractional=0.0
+        media=d['stages'].get('media',{})
+        media_result=media.get('result') or {}
+        if media.get('status')=='running' and media_result.get('progress') is not None:
+            fractional=max(0.0,min(1.0,float(media_result['progress'])/100.0))
+        d['progress']=round((len(completed)+fractional)/len(self.STAGES)*100,1)
+        d['status']='completed' if 'publish' in completed else ('blocked' if blocked else ('failed' if failed else ('running' if completed and d.get('stage') not in ('plan','shots') else ('running' if len(completed)>1 else 'ready'))))
         return self._save(d)
     def prepare_shots(self,eid):
         d=self.load(eid)
@@ -44,6 +50,7 @@ class EpisodePipeline:
         if not plan: return {'success':False,'message':'Director Plan 不存在'}
         if d.get('shot_run_id'): return {'success':True,'shot_run_id':d['shot_run_id'],'reused':True}
         shots=[dict(s,shot_id=s.get('shot_id') or s.get('id') or f'SHOT-{i:03d}') for i,s in enumerate(plan.get('shots',[]),1)]
+        if not shots: return {'success':False,'message':'导演计划没有镜头，无法准备生产任务'}
         job=shot_production_engine.create_run(eid,shots)
         d['shot_run_id']=job['run_id']; d['stage']='shots'
         d['stages']['shots']={'status':'done','result':{'shot_run_id':job['run_id'],'shot_count':len(job['shots'])}}
@@ -52,10 +59,14 @@ class EpisodePipeline:
         d=self.load(eid)
         if not d.get('shot_run_id'):
             prepared=self.prepare_shots(eid)
-            if not prepared.get('success',True): return self._block(d,'shots',prepared.get('message','无法准备镜头'))
+            if not prepared.get('success',True): return self._block(self.load(eid),'shots',prepared.get('message','无法准备镜头'))
             d=self.load(eid)
         r=shot_production_engine.run_ready(d['shot_run_id'],max_shots=max_shots)
-        d['stages']['media']={'status':'done' if r.get('status')=='completed' else ('failed' if r.get('failed_count',0) else 'blocked'),'result':r}
+        if r.get('status')=='completed': stage_status='done'
+        elif r.get('status')=='failed': stage_status='failed'
+        elif r.get('status')=='blocked': stage_status='blocked'
+        else: stage_status='running' if r.get('remaining_count',0)>0 else 'blocked'
+        d['stages']['media']={'status':stage_status,'result':r}
         d['stage']='media'
         return self.status(self._save(d)['episode_id'])
     def assemble(self,eid):
@@ -85,8 +96,9 @@ class EpisodePipeline:
             prepared=self.prepare_shots(eid)
             if not prepared.get('success',True): return self._block(self.load(eid),'shots',prepared.get('message','无法准备镜头'))
         d=self.status(eid)
-        if d['stages']['media']['status']!='done': d=self.run_media(eid,max_shots)
-        if d.get('status') in ('blocked','failed'): return d
+        if d['stages']['media']['status']!='done':
+            d=self.run_media(eid,max_shots)
+            if d['stages']['media']['status']!='done': return d
         d=self.status(eid)
         if d['stages']['assemble']['status']!='done': d=self.assemble(eid)
         if d.get('status') in ('blocked','failed'): return d
