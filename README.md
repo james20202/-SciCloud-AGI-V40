@@ -92,3 +92,12 @@ python3 -m pip install -r requirements.txt
   - https://github.com/benjiyaya/Calliope
   - https://github.com/dc-tw/ai-video-drama-platform
   - https://github.com/Comfy-Org/ComfyUI
+
+
+## V40.402.0 · Reliable Episode Assembly
+- 参考 Calliope 的镜头级素材管理与 FFmpeg 成片导出思路，以及 ai-video-drama-platform 的明确媒体输入/输出契约；参考其架构，不直接复制第三方源文件。
+- 单集剪辑按镜头顺序收集真实视频；没有视频但有有效分镜图时，使用本地 FFmpeg 将图片转换成指定时长的 H.264 MP4 镜头，再进入拼接流程。该回退是动态漫静帧镜头，不冒充 AI 动态视频。
+- 拼接前不再静默丢弃不存在或为空的素材；先尝试无损拼接，编码不兼容时自动尝试统一 H.264/AAC 编码，并返回明确失败信息。
+- 清理临时拼接清单；统一验证输出文件存在且非空；字幕烧录输出改为可写入 MP4 的 H.264 编码。
+- 增加本地媒体引擎回归测试，覆盖缺失输入、拼接编码回退、静帧视频输入校验和空文件拒绝。
+- 参考项目： https://github.com/benjiyaya/Calliope 、https://github.com/dc-tw/ai-video-drama-platform 、https://github.com/Comfy-Org/ComfyUI
