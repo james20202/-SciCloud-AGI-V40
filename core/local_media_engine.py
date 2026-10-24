@@ -126,6 +126,89 @@ class LocalMediaEngine:
                            'source': os.path.abspath(source), 'has_audio': has_audio})
         return result
 
+    def mix_audio_tracks(self, audio_clips, output, total_duration):
+        """Place per-shot audio assets on a shared episode clock and mix them locally."""
+        clips = [x for x in (audio_clips or []) if isinstance(x, dict)]
+        if not clips:
+            return {'success': False, 'message': '没有可混合的对白音轨'}
+        try:
+            total = float(total_duration)
+        except (TypeError, ValueError):
+            return {'success': False, 'message': '总时长无效'}
+        if total <= 0 or total > 3600:
+            return {'success': False, 'message': '总时长超出允许范围'}
+        valid = []
+        for clip in clips:
+            path = clip.get('path')
+            if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
+                continue
+            probe = self.probe(path)
+            streams = (probe.get('data') or {}).get('streams', []) if probe.get('success') else []
+            if not any(s.get('codec_type') == 'audio' for s in streams):
+                continue
+            try:
+                start = max(0.0, float(clip.get('start', 0) or 0))
+                duration = float(clip.get('duration', total) or total)
+            except (TypeError, ValueError):
+                continue
+            if start >= total or duration <= 0:
+                continue
+            valid.append((os.path.abspath(path), start, min(duration, total - start)))
+        if not valid:
+            return {'success': False, 'message': '没有可通过 FFprobe 校验的有效音轨'}
+        os.makedirs(os.path.dirname(output) or OUTPUT_DIR, exist_ok=True)
+        command = ['ffmpeg', '-y']
+        for path, _, _ in valid:
+            command += ['-i', path]
+        filters = []
+        labels = []
+        for index, (_, start, duration) in enumerate(valid):
+            delay_ms = int(round(start * 1000))
+            filters.append(f'[{index}:a:0]aresample=async=1:first_pts=0,adelay={delay_ms}|{delay_ms},'
+                           f'apad,atrim=duration={total},asetpts=PTS-STARTPTS[a{index}]')
+            labels.append(f'[a{index}]')
+        filters.append(''.join(labels) + f'amix=inputs={len(valid)}:duration=longest:'
+                       f'dropout_transition=0:normalize=0,atrim=duration={total},'
+                       f'asetpts=PTS-STARTPTS[aout]')
+        command += ['-filter_complex', ';'.join(filters), '-map', '[aout]', '-vn',
+                    '-c:a', 'aac', '-b:a', '192k', '-t', str(total), '-movflags', '+faststart', output]
+        result = self._verified_output(self._run(command, 1800), output)
+        if result.get('success'):
+            result.update({'audio_clip_count': len(valid), 'duration_seconds': total,
+                           'sources': [x[0] for x in valid]})
+        return result
+
+    def mix_audio_with_video(self, video, audio, output, total_duration=None):
+        """Overlay a dialogue stem on existing shot audio without discarding it."""
+        if not os.path.isfile(video) or os.path.getsize(video) <= 0:
+            return {'success': False, 'message': '视频不存在或为空'}
+        if not os.path.isfile(audio) or os.path.getsize(audio) <= 0:
+            return {'success': False, 'message': '对白混音文件不存在或为空'}
+        video_probe = self.probe(video)
+        audio_probe = self.probe(audio)
+        if not video_probe.get('success') or not audio_probe.get('success'):
+            return {'success': False, 'message': '视频或对白混音未通过 FFprobe 校验'}
+        try:
+            duration = float(total_duration or video_probe.get('duration_seconds') or 0)
+        except (TypeError, ValueError):
+            duration = 0
+        if duration <= 0:
+            return {'success': False, 'message': '成片时长无效'}
+        streams = (video_probe.get('data') or {}).get('streams', [])
+        has_video_audio = any(s.get('codec_type') == 'audio' for s in streams)
+        os.makedirs(os.path.dirname(output) or OUTPUT_DIR, exist_ok=True)
+        command = ['ffmpeg', '-y', '-i', video, '-i', audio]
+        if has_video_audio:
+            filter_graph = (f'[0:a:0]volume=0.75[base];[1:a:0]volume=1.0[dialogue];'
+                            f'[base][dialogue]amix=inputs=2:duration=longest:'
+                            f'dropout_transition=0:normalize=0,atrim=duration={duration}[aout]')
+            command += ['-filter_complex', filter_graph, '-map', '0:v:0', '-map', '[aout]']
+        else:
+            command += ['-map', '0:v:0', '-map', '1:a:0']
+        command += ['-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-t', str(duration),
+                    '-movflags', '+faststart', output]
+        return self._verified_output(self._run(command, 1800), output)
+
     def concat_videos(self, inputs, output, transition=None):
         inputs = list(inputs or [])
         if not inputs:
