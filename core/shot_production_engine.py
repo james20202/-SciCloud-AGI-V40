@@ -32,9 +32,20 @@ class ShotProductionEngine:
         return {'success':False,'blocked':True,'capability':capability,'message':message}
 
     def status(self, run_id):
-        d=self.load(run_id); total=len(d['shots']); done=sum(x['status']=='done' for x in d['shots']); failed=sum(x['status']=='failed' for x in d['shots'])
-        d['progress']=round(done/total*100,1) if total else 0; d['done_count']=done; d['failed_count']=failed
-        d['status']='completed' if total and done==total else ('failed' if failed else ('running' if any(x['status']=='running' for x in d['shots']) else 'ready'))
+        d=self.load(run_id); shots=d['shots']; total=len(shots)
+        done=sum(x['status']=='done' for x in shots)
+        failed=sum(x['status']=='failed' for x in shots)
+        blocked=sum(x['status']=='blocked' for x in shots)
+        running=sum(x['status']=='running' for x in shots)
+        ready=sum(x['status']=='ready' for x in shots)
+        d['progress']=round(done/total*100,1) if total else 0
+        d['done_count']=done; d['failed_count']=failed; d['blocked_count']=blocked
+        d['ready_count']=ready; d['remaining_count']=max(0,total-done-failed)
+        if total and done==total: d['status']='completed'
+        elif failed: d['status']='failed'
+        elif running or ready: d['status']='running' if done or running else 'ready'
+        elif blocked: d['status']='blocked'
+        else: d['status']='ready'
         d['updated_at']=self._now(); return self._save(d)
 
     def _register(self, shot, output, kind):
