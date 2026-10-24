@@ -69,12 +69,30 @@ class EpisodePipeline:
         reference_audit=character_reference_engine.audit(job['shots'])
         d['stages']['shots']={'status':'done','result':{'shot_run_id':job['run_id'],'shot_count':len(job['shots']),'character_reference_audit':reference_audit}}
         return self._save(d)
+    def refresh_character_references(self,eid):
+        """Rebind latest character reference assets; changed bindings invalidate shot caches."""
+        d=self.load(eid)
+        run_id=d.get('shot_run_id')
+        if not run_id:
+            return {'success':True,'reused':False,'message':'镜头任务尚未准备，后续准备时会绑定参考图'}
+        job=shot_production_engine.load(run_id)
+        for shot in job.get('shots',[]):
+            spec=shot.get('spec') or {}
+            shot['spec']=character_reference_engine.bind_shot_references(spec,project_id=eid)
+        shot_production_engine._save(job)
+        refreshed=shot_production_engine.status(run_id)
+        audit=character_reference_engine.audit([x.get('spec') or {} for x in refreshed.get('shots',[])])
+        d['stages']['shots']['result']['character_reference_audit']=audit
+        self._save(d)
+        return {'success':True,'run_id':run_id,'audit':audit,'status':refreshed.get('status')}
+
     def run_media(self,eid,max_shots=100):
         d=self.load(eid)
         if not d.get('shot_run_id'):
             prepared=self.prepare_shots(eid)
             if not prepared.get('success',True): return self._block(self.load(eid),'shots',prepared.get('message','无法准备镜头'))
             d=self.load(eid)
+        self.refresh_character_references(eid)
         r=shot_production_engine.run_ready(d['shot_run_id'],max_shots=max_shots)
         if r.get('status')=='completed': stage_status='done'
         elif r.get('status')=='failed': stage_status='failed'
