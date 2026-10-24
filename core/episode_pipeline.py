@@ -110,8 +110,10 @@ class EpisodePipeline:
                 target_duration=float(duration or 5)
             if target_duration <= 0:
                 target_duration=float(duration or 5)
+            target_width,target_height=(1080,1920) if d.get('aspect_ratio','9:16')=='9:16' else (1920,1080)
             normalized_path=os.path.join(clip_dir,f"{shot.get('index',0):04d}_{shot.get('shot_id','shot')}_normalized.mp4")
-            normalized=local_media_engine.normalize_video_clip(path,normalized_path,duration_seconds=target_duration)
+            normalized=local_media_engine.normalize_video_clip(path,normalized_path,duration_seconds=target_duration,
+                                                               width=target_width,height=target_height)
             if not normalized.get('success'):
                 return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 时长/画幅标准化失败：{normalized.get('message','未知错误')}",normalized)
             path=normalized_path
