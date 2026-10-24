@@ -35,11 +35,16 @@ class PublishPackEngine:
         timeline_path=os.path.join(PROJECT_DIR,'episode_pipelines',episode_id,'canonical_timeline.json')
         timeline_copy=copy_asset(timeline_path,'canonical_timeline.json')
         video_copy=copy_asset(final_video) if final_video else None
+        audio_dir=os.path.join(PROJECT_DIR,'episode_pipelines',episode_id,'audio')
+        subtitle_copy=copy_asset(os.path.join(audio_dir,'dialogue.srt'),'dialogue.srt')
+        dialogue_audio_copy=copy_asset(os.path.join(audio_dir,'dialogue_mix.m4a'),'dialogue_mix.m4a')
         manifest={
             'episode_id':episode_id,
             'created_at':datetime.now().astimezone().isoformat(timespec='seconds'),
             'final_video':os.path.basename(video_copy) if video_copy else None,
             'canonical_timeline':os.path.basename(timeline_copy) if timeline_copy else None,
+            'subtitles':os.path.basename(subtitle_copy) if subtitle_copy else None,
+            'dialogue_audio':os.path.basename(dialogue_audio_copy) if dialogue_audio_copy else None,
             'assets':[]
         }
         for path in copied:
