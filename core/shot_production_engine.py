@@ -16,6 +16,8 @@ class ShotProductionEngine:
     def _now(self): return datetime.now().isoformat(timespec='seconds')
     def _path(self, run_id): return os.path.join(self.root,run_id+'.json')
     def _save(self, data):
+        if any(s.get('status') == 'running' for s in data.get('shots', [])):
+            data['status'] = 'running'
         data['updated_at']=self._now()
         # Keep the human-readable JSON snapshot for compatibility while making
         # SQLite the durable recovery source for task state and result payloads.
