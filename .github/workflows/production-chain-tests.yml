@@ -41,6 +41,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: SciCloud-AGI-V40.405.0-upgrade
-          path: SciCloud_AGI_V40_404_Upgrade.zip
+          path: SciCloud_AGI_V40_405_Upgrade.zip
           if-no-files-found: error
           retention-days: 30
