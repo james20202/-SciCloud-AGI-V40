@@ -65,7 +65,7 @@ class ComfyUIAdapter(BaseAdapter):
             pid = result.get('prompt_id')
             if not pid:
                 return AdapterResult(False, 'ComfyUI 未返回 prompt_id。', data=result)
-            return AdapterResult(True, 'ComfyUI 工作流已提交', data={'prompt_id': pid, 'queued': True})
+            return AdapterResult(True, 'ComfyUI 工作流已提交', data={'prompt_id': pid, 'queued': True, 'reference_report': reference_report})
         except Exception as e:
             detail = ''
             if isinstance(e, HTTPError):
@@ -148,8 +148,6 @@ class ComfyUIAdapter(BaseAdapter):
         context = context or {}
         if not self._loopback_endpoint(model):
             return AdapterResult(False, 'ComfyUI 地址必须是本机回环地址。')
-        task = dict(task)
-        task["workflow"] = workflow
         submitted = self.execute(model, task, context)
         if not submitted.success:
             return submitted
@@ -170,6 +168,7 @@ class ComfyUIAdapter(BaseAdapter):
         if not saved:
             return AdapterResult(False, 'ComfyUI 已完成，但媒体下载失败或文件为空。',
                                  data={'prompt_id': prompt_id, 'output_refs': refs})
+        reference_report = submitted.data.get("reference_report") or {"success": True, "bound": 0, "warnings": []}
         message = f'ComfyUI 生成完成，已保存 {len(saved)} 个真实媒体文件。'
         if reference_report.get("warnings"):
             message += f" 角色参考图提示：{len(reference_report['warnings'])} 项未注入，请检查工作流节点标记。"
