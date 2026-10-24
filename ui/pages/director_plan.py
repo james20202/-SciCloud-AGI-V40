@@ -1,3 +1,4 @@
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFrame,QTextEdit,QLineEdit,QComboBox,QSpinBox,QListWidget,QMessageBox
 from core.director_plan import director_plan_engine
 from core.workflow_engine import workflow_engine
