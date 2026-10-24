@@ -8,6 +8,7 @@ from core.production_engine import production_engine
 from core.local_media_engine import local_media_engine
 from core.episode_timeline import build_episode_timeline
 from core.publish_pack_engine import publish_pack_engine
+from core.episode_audio_engine import episode_audio_engine
 
 class EpisodePipeline:
     """Durable episode pipeline; unavailable media capabilities remain blocked."""
@@ -120,15 +121,27 @@ class EpisodePipeline:
                 return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 时长/画幅标准化失败：{normalized.get('message','未知错误')}",normalized)
             path=normalized_path
             duration=float(normalized.get('duration_seconds') or target_duration)
+            start_seconds=round(sum(float(x.get('duration_seconds') or 0) for x in clip_records),3)
             clips.append(path)
             clip_records.append({'shot_id':shot.get('shot_id'),'scene_id':spec.get('scene_id'),
                                  'path':path,'source_kind':source_kind,'duration_seconds':duration,
-                                 'target_duration_seconds':target_duration,'spec':spec})
+                                 'target_duration_seconds':target_duration,'start_seconds':start_seconds,'spec':spec})
         if not clips:
             return self._block(d,'assemble','没有真实视频或可转换为视频的分镜图片')
-        r=production_engine.assemble(clips,run_id='RUN-'+d['episode_id'].replace('EP-',''))
+        total_duration=sum(float(x.get('duration_seconds') or 0) for x in clip_records)
+        audio_assets=episode_audio_engine.prepare(job,clip_records,os.path.join(self.root,eid,'audio'),total_duration)
+        if not audio_assets.get('success'):
+            return self._block(d,'assemble',audio_assets.get('message','对白/字幕准备失败'),audio_assets)
+        r=production_engine.assemble(clips,audio=audio_assets.get('audio_path'),
+                                     subtitles=audio_assets.get('subtitle_path'),
+                                     run_id='RUN-'+d['episode_id'].replace('EP-',''))
         if not r.get('success'):
             return self._block(d,'assemble',r.get('message','FFmpeg 组装失败'),r)
+        r['dialogue_audio']=audio_assets.get('audio_path')
+        r['subtitle_file']=audio_assets.get('subtitle_path')
+        r['subtitle_count']=audio_assets.get('subtitle_count',0)
+        r['audio_clip_count']=audio_assets.get('audio_clip_count',0)
+        d['subtitle_path']=audio_assets.get('subtitle_path')
         d['final_video']=r.get('final_output')
         timeline_path=os.path.join(self.root,eid,'canonical_timeline.json')
         timeline_result=build_episode_timeline(d,job,clip_records,timeline_path,d['final_video'])
