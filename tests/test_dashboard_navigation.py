@@ -4,9 +4,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 from ui.pages.production_dashboard import ProductionDashboard
 
+_APP = QApplication.instance() or QApplication([])
+
 
 def test_dashboard_start_emits_idea():
-    app = QApplication.instance() or QApplication([])
     dashboard = ProductionDashboard()
     captured = []
     dashboard.create_requested.connect(captured.append)
@@ -16,7 +17,6 @@ def test_dashboard_start_emits_idea():
 
 
 def test_dashboard_quick_actions_and_project_navigation_emit_routes():
-    app = QApplication.instance() or QApplication([])
     dashboard = ProductionDashboard()
     routes = []
     dashboard.navigate_requested.connect(routes.append)
