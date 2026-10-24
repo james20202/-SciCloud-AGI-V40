@@ -25,7 +25,7 @@ class UpdateManager:
                 if not members:
                     raise ValueError('升级包为空')
                 for member in members:
-                    name = member.filename.replace('\\\\', '/')
+                    name = member.filename.replace(chr(92), '/')
                     path = PurePosixPath(name)
                     mode = (member.external_attr >> 16) & 0o170000
                     if path.is_absolute() or '..' in path.parts or (path.parts and ':' in path.parts[0]):
