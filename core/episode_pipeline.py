@@ -9,6 +9,7 @@ from core.local_media_engine import local_media_engine
 from core.episode_timeline import build_episode_timeline
 from core.publish_pack_engine import publish_pack_engine
 from core.episode_audio_engine import episode_audio_engine
+from core.otio_export import export_canonical_to_otio, save_otio_file
 
 class EpisodePipeline:
     """Durable episode pipeline; unavailable media capabilities remain blocked."""
@@ -147,6 +148,9 @@ class EpisodePipeline:
         timeline_result=build_episode_timeline(d,job,clip_records,timeline_path,d['final_video'])
         r['canonical_timeline']=timeline_result.get('path')
         r['timeline_summary']=timeline_result.get('timeline',{}).get('summary',{})
+        otio_path=os.path.join(self.root,eid,'canonical_timeline.otio')
+        otio_data=export_canonical_to_otio(timeline_result.get('timeline') or {})
+        r['otio_timeline']=save_otio_file(otio_data,otio_path)
         d['stages']['assemble']={'status':'done','result':r}
         d['stage']='qc'
         return self.status(self._save(d)['episode_id'])
