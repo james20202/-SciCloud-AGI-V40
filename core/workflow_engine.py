@@ -33,6 +33,9 @@ class WorkflowEngine:
             raise ValueError('生产任务必须是对象且包含 id')
         if len(set(task_ids))!=len(task_ids):
             raise ValueError('生产任务 ID 重复，拒绝创建工作流')
+        for t in raw_tasks:
+            if not t.get('type'):
+                raise ValueError(f"任务 {t['id']} 缺少 type")
         storyboard=storyboard_director.create_from_plan(plan)
         storyboard_id=storyboard.get('storyboard_id')
         if not storyboard_id: raise RuntimeError('分镜引擎未返回 storyboard_id')
