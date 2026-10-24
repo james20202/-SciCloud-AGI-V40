@@ -14,7 +14,7 @@ class ShotProductionStatusTests(unittest.TestCase):
             data["shots"][0]["status"] = "done"
             engine._save(data)
             report = engine.status(run["run_id"])
-        self.assertEqual(report["status"], "ready")
+        self.assertEqual(report["status"], "running")
         self.assertEqual(report["done_count"], 1)
         self.assertEqual(report["remaining_count"], 1)
         self.assertEqual(report["progress"], 50.0)
