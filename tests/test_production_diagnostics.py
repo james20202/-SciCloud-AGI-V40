@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.production_diagnostics import run_diagnostics
+from core.production_diagnostics import run_diagnostics, _http_check
 
 
 class ProductionDiagnosticsTests(unittest.TestCase):
@@ -29,6 +29,11 @@ class ProductionDiagnosticsTests(unittest.TestCase):
         self.assertTrue(report["summary"]["ready"])
         self.assertEqual(report["summary"]["failed"], 0)
         self.assertTrue(report["services"]["comfyui"]["ok"])
+
+    def test_service_probe_refuses_non_loopback_hosts(self):
+        report = _http_check("https://example.com")
+        self.assertFalse(report["ok"])
+        self.assertIn("仅允许", report["message"])
 
     def test_directory_failure_is_reported_not_raised(self):
         with tempfile.TemporaryDirectory() as root:
