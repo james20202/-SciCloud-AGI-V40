@@ -32,6 +32,10 @@ class ShotProductionEngine:
         for shot in shots:
             shot['artifacts']=valid_artifacts(shot.get('artifacts',[]))
             current=shot_fingerprint(shot.get('spec') or {})
+            # Backward compatibility: adopt fingerprints for legacy completed shots only
+            # when their existing media still passes the on-disk validity check.
+            if not shot.get('input_fingerprint') and shot.get('status')=='done' and shot['artifacts']:
+                shot['input_fingerprint']=current
             if shot.get('input_fingerprint') != current:
                 shot['input_fingerprint']=current
                 shot['status']='ready'
@@ -68,6 +72,8 @@ class ShotProductionEngine:
         if not shot: return {'success':False,'message':'找不到镜头'}
         shot['artifacts']=valid_artifacts(shot.get('artifacts',[]))
         fingerprint=shot_fingerprint(shot.get('spec') or {})
+        if not shot.get('input_fingerprint') and shot.get('status')=='done' and shot['artifacts']:
+            shot['input_fingerprint']=fingerprint
         if shot.get('input_fingerprint') != fingerprint:
             shot['input_fingerprint']=fingerprint
             shot['artifacts']=[]
