@@ -125,5 +125,5 @@ python3 -m pip install -r requirements.txt
 - 汇总每个镜头已登记的有效音频素材，按镜头在单集时间线中的起始时间延迟定位，并使用本地 FFmpeg 混合成对白音轨；不会把缺失音频伪装成配音。
 - 将对白音轨叠加到成片原有音轨上，保留原视频音频并降低底音轨音量；没有原音轨时直接使用对白音轨。
 - 有对白时自动烧录字幕，并把 SRT、对白混音、canonical timeline、成片和 SHA-256 清单一并放入发布包。
-- 参考 MIT 许可的 [Comic-drama](https://github.com/tccnnd/Comic-drama) 时间线契约、[LocalMiniDrama](https://github.com/xuanyustudio/LocalMiniDrama) 的阶段化/可恢复制作流程，以及 [tv-series-pipeline](https://github.com/creativeone86/tv-series-pipeline) 的分角色对白、时间轴和字幕工作流；本次新增的 Python 模块按 SciCloud 数据结构独立实现，没有整段复制这些项目的源文件。复用第三方代码时保留其版权与许可声明。
+- 参考 MIT 许可的 [Comic-drama](https://github.com/tccnnd/Comic-drama) 时间线契约、[LocalMiniDrama](https://github.com/xuanyustudio/LocalMiniDrama) 的阶段化/可恢复制作流程，以及 [tv-series-pipeline](https://github.com/creativeone86/tv-series-pipeline) 的分角色对白、时间轴和字幕工作流。为减少重复开发，`core/otio_export.py` 直接复用了 Comic-drama `backend/timeline_export.py` 中的 OTIO 时间/片段辅助代码并适配 SciCloud 时间线；第三方 MIT 版权与许可全文保存在 `THIRD_PARTY_NOTICES.md`。
 - 新增对白绝对时间码、音轨延迟混音、原音轨保留的回归测试。CI 通过不代表已在用户 Mac 上完成真实模型渲染或中文字体显示验收。
