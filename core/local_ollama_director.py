@@ -66,33 +66,37 @@ class LocalOllamaDirector:
             data=json.loads(raw) if isinstance(raw,str) else raw
             if not isinstance(data,dict):
                 raise ValueError('模型返回不是 JSON 对象')
-            story=data.get('logline')
-            hook=data.get('hook')
-            if self._text(story): plan.setdefault('story',{})['logline']=self._text(story)
-            if self._text(hook): plan.setdefault('intent',{})['hook']=self._text(hook)
-            char_map={x.get('id'):x for x in plan.get('characters',[]) if x.get('id')}
-            for item in data.get('characters',[]) if isinstance(data.get('characters'),list) else []:
-                target=char_map.get(item.get('id')) if isinstance(item,dict) else None
-                if target and self._text(item.get('description')): target['description']=self._text(item['description'])
-            scene_map={x.get('id'):x for x in plan.get('scenes',[]) if x.get('id')}
-            for item in data.get('scenes',[]) if isinstance(data.get('scenes'),list) else []:
-                target=scene_map.get(item.get('id')) if isinstance(item,dict) else None
-                if target and self._text(item.get('purpose')): target['purpose']=self._text(item['purpose'])
             items=data.get('shot_items')
             if not isinstance(items,list) or len(items)!=len(selected):
                 raise ValueError('模型镜头文本数量与输入不匹配')
+            shot_ids={x.get('id') for x in selected}
+            returned_ids={x.get('id') for x in items if isinstance(x,dict)}
+            if returned_ids != shot_ids or len(returned_ids) != len(items):
+                raise ValueError('模型镜头 ID 缺失、重复或与原计划不一致')
+            chars=data.get('characters',[])
+            scenes=data.get('scenes',[])
+            if not isinstance(chars,list) or not isinstance(scenes,list):
+                raise ValueError('模型人物或场景字段不是列表')
+            story=self._text(data.get('logline'))
+            hook=self._text(data.get('hook'))
+            char_map={x.get('id'):x for x in plan.get('characters',[]) if x.get('id')}
+            scene_map={x.get('id'):x for x in plan.get('scenes',[]) if x.get('id')}
             shot_map={x.get('id'):x for x in selected}
-            updated=0
+            # All validation completes before mutating the deterministic plan.
+            if story: plan.setdefault('story',{})['logline']=story
+            if hook: plan.setdefault('intent',{})['hook']=hook
+            for item in chars:
+                target=char_map.get(item.get('id')) if isinstance(item,dict) else None
+                if target and self._text(item.get('description')): target['description']=self._text(item['description'])
+            for item in scenes:
+                target=scene_map.get(item.get('id')) if isinstance(item,dict) else None
+                if target and self._text(item.get('purpose')): target['purpose']=self._text(item['purpose'])
             for item in items:
-                if not isinstance(item,dict): continue
-                target=shot_map.get(item.get('id'))
-                if not target: continue
+                target=shot_map[item['id']]
                 for key in ('visual_prompt','action','dialogue','director_note'):
                     value=self._text(item.get(key))
                     if value: target[key]=value
-                updated+=1
-            if updated != len(selected):
-                raise ValueError('模型没有为每个镜头返回对应内容')
+            updated=len(items)
             return {'mode':'local_ollama','provider':'ollama','model':model,'message':f'本地模型已优化 {updated} 个镜头文本'}
         except Exception as exc:
             return {'mode':'deterministic_fallback','provider':'local_ollama','model':self.model,'message':f'本地模型不可用或返回无效结果：{exc}'}
