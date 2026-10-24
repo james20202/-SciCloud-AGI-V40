@@ -6,12 +6,16 @@ import os
 import shutil
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from pathlib import Path
 
 from core.config import BASE_DIR, DATA_DIR, OUTPUT_DIR, PROJECT_DIR, LOG_DIR, BACKUP_DIR
 
 
 def _http_check(url, timeout=1.5):
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or parsed.hostname not in ("localhost", "127.0.0.1", "::1"):
+        return {"ok": False, "message": "为避免访问外部服务，诊断仅允许 localhost/127.0.0.1/::1"}
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "SciCloud-Local-Diagnostics/1"})
         with urllib.request.urlopen(req, timeout=timeout) as response:
