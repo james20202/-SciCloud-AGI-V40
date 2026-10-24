@@ -53,7 +53,7 @@ jobs:
         with:
           name: scicloud-v40-408-upgrade
           path: |
-            SciCloud_AGI_V40_407_Upgrade.zip
-            SciCloud_AGI_V40_407_Upgrade.zip.sha256
+            SciCloud_AGI_V40_408_Upgrade.zip
+            SciCloud_AGI_V40_408_Upgrade.zip.sha256
           if-no-files-found: error
           retention-days: 30
