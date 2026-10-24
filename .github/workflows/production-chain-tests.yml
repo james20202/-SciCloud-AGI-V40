@@ -20,5 +20,9 @@ jobs:
           python -m pip install -r requirements.txt pytest
       - name: Compile Python sources
         run: python -m compileall -q core ui tests
-      - name: Run production-chain regression tests
-        run: python -m pytest -q tests/test_production_chain_hardening.py
+      - name: Run legacy script-based contracts
+        run: |
+          python tests/test_v4200.py
+          python tests/test_v4240.py
+      - name: Run regression suite
+        run: python -m pytest -q tests
