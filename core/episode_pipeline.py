@@ -71,13 +71,38 @@ class EpisodePipeline:
         return self.status(self._save(d)['episode_id'])
     def assemble(self,eid):
         d=self.load(eid)
-        if d['stages']['media']['status']!='done': return self._block(d,'assemble','镜头媒体尚未全部完成')
+        if d['stages']['media']['status']!='done':
+            return self._block(d,'assemble','镜头媒体尚未全部完成')
         job=shot_production_engine.load(d['shot_run_id'])
-        videos=[a['path'] for s in job['shots'] for a in s.get('artifacts',[]) if a.get('kind')=='video' and os.path.isfile(a.get('path',''))]
-        if not videos: return self._block(d,'assemble','没有真实视频素材可供剪辑')
-        r=production_engine.assemble(videos,run_id='RUN-'+d['episode_id'].replace('EP-',''))
-        if not r.get('success'): return self._block(d,'assemble',r.get('message','FFmpeg 组装失败'),r)
-        d['final_video']=r.get('final_output'); d['stages']['assemble']={'status':'done','result':r}; d['stage']='qc'
+        # Keep shot order deterministic; prefer a real video, otherwise turn its image into a real MP4 clip.
+        clips=[]
+        clip_dir=os.path.join(self.project_dir,'episode_pipelines',eid,'image_clips')
+        os.makedirs(clip_dir,exist_ok=True)
+        for shot in sorted(job.get('shots',[]),key=lambda s:s.get('index',0)):
+            artifacts=shot.get('artifacts',[])
+            videos=[a.get('path') for a in artifacts if a.get('kind')=='video'
+                    and os.path.isfile(a.get('path','')) and os.path.getsize(a.get('path',''))>0]
+            if videos:
+                clips.append(videos[0])
+                continue
+            images=[a.get('path') for a in artifacts if a.get('kind')=='image'
+                    and os.path.isfile(a.get('path','')) and os.path.getsize(a.get('path',''))>0]
+            if images:
+                spec=shot.get('spec') or {}
+                duration=spec.get('duration_seconds') or spec.get('duration') or 5
+                clip=os.path.join(clip_dir,f"{shot.get('index',0):04d}_{shot.get('shot_id','shot')}.mp4")
+                rendered=production_engine.local_media_engine.image_to_video(images[0],clip,duration_seconds=duration)
+                if not rendered.get('success'):
+                    return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 图片转视频失败：{rendered.get('message','未知错误')}",rendered)
+                clips.append(clip)
+        if not clips:
+            return self._block(d,'assemble','没有真实视频或可转换为视频的分镜图片')
+        r=production_engine.assemble(clips,run_id='RUN-'+d['episode_id'].replace('EP-',''))
+        if not r.get('success'):
+            return self._block(d,'assemble',r.get('message','FFmpeg 组装失败'),r)
+        d['final_video']=r.get('final_output')
+        d['stages']['assemble']={'status':'done','result':r}
+        d['stage']='qc'
         return self.status(self._save(d)['episode_id'])
     def qc(self,eid):
         d=self.load(eid); p=d.get('final_video'); ok=bool(p and os.path.isfile(p) and os.path.getsize(p)>0)
