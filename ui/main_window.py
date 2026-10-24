@@ -70,11 +70,11 @@ class MainWindow(QMainWindow):
         dock=QFrame(); dock.setObjectName('Dock'); dock.setFixedWidth(148)
         l=QVBoxLayout(dock); l.setContentsMargins(8,12,8,12); l.setSpacing(4)
         self.dock_buttons=[]
-        items=[('⌂','首页','驾驶舱'),('▤','项目','项目'),('✦','创作','创作'),('▶','生成','生产'),('◇','资产','资产'),('◈','模型','模型'),('◆','ComfyUI','工作流')]
+        items=[('⌂','首页','驾驶舱'),('✦','创作','创作'),('▶','生产','生产'),('◇','资产','资产'),('◈','AI核心','模型')]
         for icon,label,key in items:
             b=QToolButton(); b.setObjectName('NavButton'); b.setCheckable(True); b.setText(icon+'\n'+label); b.setToolTip(label); b.setMinimumHeight(52); b.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Fixed); b.clicked.connect(lambda _=False,k=key:self.select(k)); l.addWidget(b); self.dock_buttons.append((key,b))
-        tools=QToolButton(); tools.setObjectName('NavButton'); tools.setText('⚙\n工具'); tools.setToolTip('更多工具'); tools.setMinimumHeight(52); tools.clicked.connect(self.show_more_menu); l.addWidget(tools); self.dock_buttons.append(('工具',tools))
-        sets=QToolButton(); sets.setObjectName('NavButton'); sets.setText('⚙\n设置'); sets.setToolTip('系统中心'); sets.setMinimumHeight(52); sets.clicked.connect(lambda:self.select('系统')); l.addWidget(sets); self.dock_buttons.append(('设置',sets))
+        tools=QToolButton(); tools.setObjectName('NavButton'); tools.setText('☷\n更多'); tools.setToolTip('更多功能'); tools.setMinimumHeight(52); tools.clicked.connect(self.show_more_menu); l.addWidget(tools); self.dock_buttons.append(('工具',tools))
+        sets=QToolButton(); sets.setObjectName('NavButton'); sets.setText('⚙\n系统'); sets.setToolTip('系统中心'); sets.setMinimumHeight(52); sets.clicked.connect(lambda:self.select('系统')); l.addWidget(sets); self.dock_buttons.append(('设置',sets))
         l.addItem(QSpacerItem(1,1,QSizePolicy.Minimum,QSizePolicy.Expanding))
         fb=QLabel('SciCloud AGI V40'); fb.setObjectName('DockFooterBrand'); fb.setAlignment(Qt.AlignCenter); l.addWidget(fb)
         fs=QLabel('AI让每个人都能成为导演'); fs.setObjectName('DockFooterSub'); fs.setAlignment(Qt.AlignCenter); l.addWidget(fs)
