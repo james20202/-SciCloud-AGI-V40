@@ -148,6 +148,8 @@ class ComfyUIAdapter(BaseAdapter):
         context = context or {}
         if not self._loopback_endpoint(model):
             return AdapterResult(False, 'ComfyUI 地址必须是本机回环地址。')
+        task = dict(task)
+        task["workflow"] = workflow
         submitted = self.execute(model, task, context)
         if not submitted.success:
             return submitted
