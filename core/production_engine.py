@@ -7,7 +7,7 @@ from core.subtitle_engine import subtitle_engine
 from core.adapters import ComfyUIAdapter, TTSCommandAdapter
 
 class ProductionEngine:
-    """Orchestrates real local media adapters. It does not fabricate generated assets."""
+    """Orchestrates local generation and media operations; outputs must exist on disk."""
     def __init__(self):
         self.comfy=ComfyUIAdapter(); self.tts=TTSCommandAdapter()
         self.root=os.path.join(PROJECT_DIR,'production_runs'); os.makedirs(self.root,exist_ok=True)
@@ -25,8 +25,16 @@ class ProductionEngine:
     def submit_comfy(self, workflow, stage, run_id):
         model=model_hub.get('MODEL-COMFYUI')
         if not model or not model.get('enabled'): return {'success':False,'message':'ComfyUI 未启用'}
-        task={'workflow':workflow}; r=self.comfy.execute(model,task,{})
-        out=r.to_dict(); out['stage']=stage; out['run_id']=run_id; return out
+        output_dir=os.path.join(self._run_dir(run_id),'assets',stage)
+        task={'workflow':workflow,'output_dir':output_dir}
+        # Do not return "success" merely because the API accepted a queue item.
+        r=self.comfy.render(model,task,{})
+        out=r.to_dict(); out['stage']=stage; out['run_id']=run_id
+        out['outputs']=[x for x in out.get('outputs',[]) if os.path.isfile(x.get('path','')) and os.path.getsize(x.get('path',''))>0]
+        out['success']=bool(out.get('success') and out['outputs'])
+        if not out['success'] and r.success:
+            out['message']='ComfyUI 返回成功，但未产生可验证的本地媒体文件。'
+        return out
     def synthesize_voice(self, command, text, output, run_id):
         model=model_hub.get('MODEL-LOCAL-TTS')
         if not model or not model.get('enabled'): return {'success':False,'message':'本地 TTS 未启用'}

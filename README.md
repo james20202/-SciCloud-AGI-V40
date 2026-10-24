@@ -79,3 +79,16 @@ python3 -m pip install -r requirements.txt
 - 镜头生产状态新增阻塞数、待处理数和剩余数；部分批次不再被误判为全部失败，可继续执行剩余镜头。
 - 单集生产链支持按阶段续跑，媒体阶段未完成时不会提前进入剪辑；空剧情和空镜头计划会明确拒绝。
 - 新增本机诊断与镜头状态自动回归测试。
+
+
+## V40.401.0 · Real ComfyUI Render Pipeline
+- 借鉴开源项目 Calliope 的本地故事到视频阶段化流程、ai-video-drama-platform 的明确 API/媒体契约，以及 ComfyUI 官方 API 的队列/历史/媒体读取模式；仅参考架构思路，没有复制第三方实现代码。
+- ComfyUI 适配器从“提交队列即返回”升级为等待执行完成、读取历史输出、下载真实媒体到项目本地目录。
+- 图片、视频和音频输出使用安全文件名写入本地；空输出、无可下载媒体、超时和下载失败均明确报错。
+- ComfyUI 生成地址默认并限制为 localhost/127.0.0.1/::1，避免把生产工作流提交到意外的外部服务。
+- 镜头不能再因为 ComfyUI 仅接受了排队请求就标记完成；必须有非空、可验证的本地媒体文件。
+- 新增 ComfyUI 渲染下载契约、外部地址拒绝和空输出阻断测试。
+- 参考项目：
+  - https://github.com/benjiyaya/Calliope
+  - https://github.com/dc-tw/ai-video-drama-platform
+  - https://github.com/Comfy-Org/ComfyUI
