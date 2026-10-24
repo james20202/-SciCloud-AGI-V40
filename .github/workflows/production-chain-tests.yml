@@ -1,0 +1,24 @@
+name: Production chain regression tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "agent/**"]
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Compile Python sources
+        run: python -m compileall -q core ui tests
+      - name: Run production-chain regression tests
+        run: python -m pytest -q tests/test_production_chain_hardening.py
