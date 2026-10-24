@@ -106,3 +106,8 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+## Comic Drama Workflow — MIT License (script/asset workflow reference)
+
+The V40.410 `core/script_asset_extractor.py` is a SciCloud-native implementation informed by the structured script-to-character/scene/shot asset workflow documented in [tccnnd/Comic-drama](https://github.com/tccnnd/Comic-drama). It does not copy that repository's implementation file. Copyright and MIT license notice for directly adapted Comic-drama code above remains applicable to the files identified there.
