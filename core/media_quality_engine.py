@@ -55,12 +55,12 @@ class MediaQualityEngine:
                 errors.append("duration_mismatch")
         diagnostics = {"success": False, "message": "未执行黑帧/静音检测"}
         if self.which("ffmpeg"):
-            diagnostics = self._run([
-                "ffmpeg", "-hide_banner", "-nostats", "-i", path, "-vf",
-                f"blackdetect=d={float(black_warning_seconds)}:pix_th=0.10:pic_th=0.98",
-                "-af", f"silencedetect=n=-50dB:d={float(silence_warning_seconds)}",
-                "-f", "null", "-"
-            ], 300)
+            command = ["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-vf",
+                       f"blackdetect=d={float(black_warning_seconds)}:pix_th=0.10:pic_th=0.98"]
+            if has_audio:
+                command += ["-af", f"silencedetect=n=-50dB:d={float(silence_warning_seconds)}"]
+            command += ["-f", "null", "-"]
+            diagnostics = self._run(command, 300)
         log = (diagnostics.get("stderr") or "") if diagnostics.get("success") else ""
         black = [{"start": float(a), "end": float(b), "duration": float(c)}
                  for a, b, c in re.findall(r"black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)", log)]
