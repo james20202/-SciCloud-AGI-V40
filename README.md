@@ -101,3 +101,12 @@ python3 -m pip install -r requirements.txt
 - 清理临时拼接清单；统一验证输出文件存在且非空；字幕烧录输出改为可写入 MP4 的 H.264 编码。
 - 增加本地媒体引擎回归测试，覆盖缺失输入、拼接编码回退、静帧视频输入校验和空文件拒绝。
 - 参考项目： https://github.com/benjiyaya/Calliope 、https://github.com/dc-tw/ai-video-drama-platform 、https://github.com/Comfy-Org/ComfyUI
+
+
+## V40.403.0 · Canonical Timeline & QC
+- 参考 MIT 许可的 [Comic-drama](https://github.com/tccnnd/Comic-drama) 的 canonical timeline 契约：把镜头顺序、时间范围、素材路径和真实视频/静帧回退来源写入标准 JSON；本版本实现适配 SciCloud 数据结构，没有整段复制第三方实现。
+- 每集生成 `canonical_timeline.json`，记录镜头 ID、连续时间码、视觉提示词、媒体路径、真实视频/静帧回退标记，以及可追溯的音频素材。
+- 成片质检改为通过 FFprobe 检查真实媒体时长、视频流和目标时长偏差；仅有非空文件但没有可识别视频流，不再视为质检通过。
+- 发布包纳入时间线、流水线快照和成片，并为每个打包素材生成 SHA-256 清单，方便校验文件完整性与追踪来源。
+- 增加时间线连续性、镜头来源标记和音频素材关联测试。
+- 参考源： https://github.com/tccnnd/Comic-drama ，MIT License；本次借鉴其开放时间线契约。第三方源代码如后续直接复用，会保留对应版权与许可声明。
