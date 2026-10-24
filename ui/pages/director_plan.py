@@ -20,7 +20,7 @@ class PlanWorker(QThread):
 
 class DirectorPlanPage(QWidget):
     def __init__(self, initial_idea=''):
-        super().__init__(); self.plan=None; self.initial_idea=initial_idea; self.build()
+        super().__init__(); self.plan=None; self.initial_idea=initial_idea; self.worker=None; self.build()
     def build(self):
         root=QVBoxLayout(self); root.setContentsMargins(28,24,28,24); root.setSpacing(14)
         t=QLabel('🧠 AI导演计划'); t.setObjectName('PageTitle'); root.addWidget(t)
@@ -28,7 +28,7 @@ class DirectorPlanPage(QWidget):
         form=QFrame(); form.setObjectName('Hero'); fl=QVBoxLayout(form)
         self.title=QLineEdit(); self.title.setPlaceholderText('项目名称（可选）'); fl.addWidget(self.title)
         self.idea=QTextEdit(); self.idea.setPlaceholderText('输入创意，例如：60秒中式恐怖短剧，道士进入废弃凶宅，遇到红衣女鬼，结尾留下悬念。'); self.idea.setFixedHeight(100); self.idea.setPlainText(self.initial_idea); fl.addWidget(self.idea)
-        row=QHBoxLayout(); self.duration=QSpinBox(); self.duration.setRange(10,600); self.duration.setValue(60); row.addWidget(QLabel('时长')); row.addWidget(self.duration); self.ratio=QComboBox(); self.ratio.addItems(['9:16','16:9','1:1']); row.addWidget(QLabel('画幅')); row.addWidget(self.ratio); row.addStretch(); btn=QPushButton('✨ 生成导演计划'); btn.setObjectName('Primary'); btn.clicked.connect(self.generate); row.addWidget(btn); self.queue_btn=QPushButton('🚀 进入生产队列'); self.queue_btn.setEnabled(False); self.queue_btn.clicked.connect(self.enqueue); row.addWidget(self.queue_btn); fl.addLayout(row); root.addWidget(form)
+        row=QHBoxLayout(); self.duration=QSpinBox(); self.duration.setRange(10,600); self.duration.setValue(60); row.addWidget(QLabel('时长')); row.addWidget(self.duration); self.ratio=QComboBox(); self.ratio.addItems(['9:16','16:9','1:1']); row.addWidget(QLabel('画幅')); row.addWidget(self.ratio); row.addStretch(); self.generate_btn=QPushButton('✨ 生成导演计划'); self.generate_btn.setObjectName('Primary'); self.generate_btn.clicked.connect(self.generate); row.addWidget(self.generate_btn); self.queue_btn=QPushButton('🚀 进入生产队列'); self.queue_btn.setEnabled(False); self.queue_btn.clicked.connect(self.enqueue); row.addWidget(self.queue_btn); fl.addLayout(row); root.addWidget(form)
         self.summary=QLabel('等待生成'); self.summary.setObjectName('Muted'); root.addWidget(self.summary)
         self.tasks=QListWidget(); root.addWidget(self.tasks,1)
     def _validate_plan(self, plan):
