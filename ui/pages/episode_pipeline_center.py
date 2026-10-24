@@ -1,13 +1,16 @@
 import json
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QLineEdit,QTextEdit,QPushButton,QSpinBox,QComboBox
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QLineEdit,QTextEdit,QPushButton
 from core.episode_pipeline import episode_pipeline
+from core.production_diagnostics import run_diagnostics
+
 class EpisodePipelineCenter(QWidget):
     def __init__(self):
         super().__init__(); self.setObjectName('Page'); l=QVBoxLayout(self); l.setContentsMargins(30,26,30,26); l.setSpacing(12)
-        l.addWidget(QLabel('🚀 V40.100 · Episode Pipeline')); l.addWidget(QLabel('一句话 → 镜头 → 本地媒体 → 成片 → QC → 发布。真实文件才算成功。'))
+        l.addWidget(QLabel('🚀 V40.400 · 漫剧生产中心')); l.addWidget(QLabel('一句话 → 镜头 → 本地媒体 → 成片 → QC → 发布。真实文件才算成功。'))
         row=QHBoxLayout(); self.idea=QLineEdit(); self.idea.setPlaceholderText('例如：道士进入废弃凶宅，遇到红衣女鬼，结尾留下悬念'); row.addWidget(self.idea,1); self.ep=QLineEdit(); self.ep.setPlaceholderText('EP-...'); row.addWidget(self.ep)
         l.addLayout(row); row=QHBoxLayout()
-        for name,fn in [('创建Pipeline',self.create),('准备镜头',self.prepare),('执行媒体',self.media),('一键跑完整集',self.run),('状态',self.status)]: b=QPushButton(name); b.clicked.connect(fn); row.addWidget(b)
+        for name,fn in [('创建项目',self.create),('准备镜头',self.prepare),('执行媒体',self.media),('一键跑完整集',self.run),('查看状态',self.status),('诊断本机环境',self.diagnose)]:
+            b=QPushButton(name); b.clicked.connect(fn); row.addWidget(b)
         l.addLayout(row); self.out=QTextEdit(); self.out.setReadOnly(True); l.addWidget(self.out,1)
     def show(self,x): self.out.setPlainText(json.dumps(x,ensure_ascii=False,indent=2))
     def create(self):
@@ -18,6 +21,7 @@ class EpisodePipelineCenter(QWidget):
     def media(self): self._call(lambda:episode_pipeline.run_media(self.ep.text().strip()))
     def run(self): self._call(lambda:episode_pipeline.run(self.ep.text().strip()))
     def status(self): self._call(lambda:episode_pipeline.status(self.ep.text().strip()))
+    def diagnose(self): self._call(run_diagnostics)
     def _call(self,fn):
         try:self.show(fn())
         except Exception as e:self.show({'error':str(e)})
