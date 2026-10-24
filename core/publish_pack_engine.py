@@ -34,6 +34,8 @@ class PublishPackEngine:
         pipeline_copy=copy_asset(pipeline_path,'episode_pipeline.json')
         timeline_path=os.path.join(PROJECT_DIR,'episode_pipelines',episode_id,'canonical_timeline.json')
         timeline_copy=copy_asset(timeline_path,'canonical_timeline.json')
+        otio_path=os.path.join(PROJECT_DIR,'episode_pipelines',episode_id,'canonical_timeline.otio')
+        otio_copy=copy_asset(otio_path,'canonical_timeline.otio')
         video_copy=copy_asset(final_video) if final_video else None
         audio_dir=os.path.join(PROJECT_DIR,'episode_pipelines',episode_id,'audio')
         subtitle_copy=copy_asset(os.path.join(audio_dir,'dialogue.srt'),'dialogue.srt')
@@ -43,6 +45,7 @@ class PublishPackEngine:
             'created_at':datetime.now().astimezone().isoformat(timespec='seconds'),
             'final_video':os.path.basename(video_copy) if video_copy else None,
             'canonical_timeline':os.path.basename(timeline_copy) if timeline_copy else None,
+            'otio_timeline':os.path.basename(otio_copy) if otio_copy else None,
             'subtitles':os.path.basename(subtitle_copy) if subtitle_copy else None,
             'dialogue_audio':os.path.basename(dialogue_audio_copy) if dialogue_audio_copy else None,
             'assets':[]
