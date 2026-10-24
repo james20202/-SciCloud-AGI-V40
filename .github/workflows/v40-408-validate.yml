@@ -1,0 +1,59 @@
+name: V40.408 Validation and Upgrade Package
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libxcb-cursor0 libx11-xcb1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest requests flask
+      - name: Compile all Python sources
+        run: python -m compileall -q core ui modules tests
+      - name: Run complete regression suite
+        run: python -m pytest -q
+      - name: Build versioned upgrade ZIP
+        if: success()
+        run: |
+          PACKAGE="SciCloud_AGI_V40_408_Upgrade.zip"
+          zip -r "$PACKAGE" . \
+            -x ".git/*" "*/__pycache__/*" "__pycache__/*" ".pytest_cache/*" \
+               ".venv/*" "venv/*" "backups/*" "projects/*" "output/*" "logs/*" \
+               "data/*" "dist/*" "build/*" "*.pyc" "*.sqlite3" "*.db"
+          unzip -t "$PACKAGE"
+          shasum -a 256 "$PACKAGE" > "$PACKAGE.sha256"
+      - name: Upload tested upgrade package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scicloud-v40-408-upgrade
+          path: |
+            SciCloud_AGI_V40_407_Upgrade.zip
+            SciCloud_AGI_V40_407_Upgrade.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
