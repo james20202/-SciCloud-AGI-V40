@@ -1,6 +1,7 @@
 import json, os
 from datetime import datetime
 from core.config import PROJECT_DIR
+from core.storyboard_engine import storyboard_director
 
 STATUS_PENDING='pending'
 STATUS_READY='ready'
@@ -21,6 +22,9 @@ class WorkflowEngine:
     def _now(self): return datetime.now().isoformat(timespec='seconds')
 
     def create_from_plan(self, plan):
+        # Persist one storyboard artifact and link it to downstream workflow tasks.
+        storyboard = storyboard_director.create_from_plan(plan)
+        storyboard_id = storyboard.get('storyboard_id')
         tasks=[]
         deps={
             'story':[], 'character':['story'], 'scene':['story'], 'storyboard':['character','scene'],
@@ -30,8 +34,10 @@ class WorkflowEngine:
         for i,t in enumerate(plan.get('tasks',[]),1):
             task=dict(t); task['status']=STATUS_READY if not deps.get(task['type']) else STATUS_PENDING
             task['progress']=0; task['depends_on']=deps.get(task['type'],[]); task['started_at']=None; task['finished_at']=None; task['error']=None
+            if task.get('type') in ('storyboard', 'prompt', 'image', 'video'):
+                task['storyboard_id'] = storyboard_id
             tasks.append(task)
-        wf={'workflow_id':'WF-'+plan['plan_id'].replace('PLAN-',''),'plan_id':plan['plan_id'],'title':plan['title'],'status':'ready','created_at':self._now(),'updated_at':self._now(),'paused':False,'tasks':tasks}
+        wf={'workflow_id':'WF-'+plan['plan_id'].replace('PLAN-',''),'plan_id':plan['plan_id'],'title':plan['title'],'storyboard_id':storyboard_id,'status':'ready','created_at':self._now(),'updated_at':self._now(),'paused':False,'tasks':tasks}
         self._refresh_ready(wf); self.save(wf); self.current=wf; return wf
 
     def save(self,wf):
@@ -77,7 +83,9 @@ class WorkflowEngine:
         wf=self.load(wid); task=next(t for t in wf['tasks'] if t['id']==task_id); task['status']=STATUS_FAILED; task['error']=error; self._refresh_ready(wf); self.save(wf); return wf
 
     def retry_task(self,wid,task_id):
-        wf=self.load(wid); task=next(t for t in wf['tasks'] if t['id']==task_id); task['status']=STATUS_READY; task['progress']=0; task['error']=None; task['started_at']=None; task['finished_at']=None; self._refresh_ready(wf); self.save(wf); return wf
+        wf=self.load(wid); task=next(t for t in wf['tasks'] if t['id']==task_id)
+        task['status']=STATUS_PENDING; task['progress']=0; task['error']=None; task['started_at']=None; task['finished_at']=None
+        self._refresh_ready(wf); self.save(wf); return wf
 
     def pause(self,wid):
         wf=self.load(wid); wf['paused']=True; self._refresh_ready(wf); self.save(wf); return wf
