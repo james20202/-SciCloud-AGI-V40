@@ -100,7 +100,7 @@ class LocalMediaEngine:
             with open(manifest, 'w', encoding='utf-8') as f:
                 f.write('ffconcat version 1.0\n')
                 for p in inputs:
-                    escaped = os.path.abspath(p).replace('\\\\', '\\\\\\\\').replace("'", "\\\\'")
+                    escaped = os.path.abspath(p).replace("\\", "\\\\").replace("'", "\\'")
                     f.write("file '" + escaped + "'\n")
             # Fast path: stream copy when all clips share compatible streams.
             fast = self._run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', manifest,
@@ -144,7 +144,7 @@ class LocalMediaEngine:
         if not os.path.isfile(video) or not os.path.isfile(subtitle):
             return {'success': False, 'message': '视频或字幕文件不存在'}
         os.makedirs(os.path.dirname(output) or OUTPUT_DIR, exist_ok=True)
-        sub = os.path.abspath(subtitle).replace('\\\\', '/').replace(':', '\\\\:').replace("'", "\\\\'")
+        sub = os.path.abspath(subtitle).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
         r = self._run(['ffmpeg', '-y', '-i', video, '-vf', f"subtitles='{sub}'",
                        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
                        '-c:a', 'copy', '-movflags', '+faststart', output], 1800)
