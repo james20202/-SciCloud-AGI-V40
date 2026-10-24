@@ -11,6 +11,7 @@ from core.publish_pack_engine import publish_pack_engine
 from core.episode_audio_engine import episode_audio_engine
 from core.otio_export import export_canonical_to_otio, save_otio_file
 from core.shot_consistency import shot_consistency_engine
+from core.media_quality_engine import media_quality_engine
 
 class EpisodePipeline:
     """Durable episode pipeline; unavailable media capabilities remain blocked."""
@@ -161,17 +162,20 @@ class EpisodePipeline:
         return self.status(self._save(d)['episode_id'])
     def qc(self,eid):
         d=self.load(eid); p=d.get('final_video')
+        expected=float(d.get('duration_seconds') or 0)
+        report=media_quality_engine.inspect(p,expected_duration=expected)
         basic=bool(p and os.path.isfile(p) and os.path.getsize(p)>0)
         probe=local_media_engine.probe(p) if basic else {'success':False,'message':'成片文件不存在或为空'}
-        expected=float(d.get('duration_seconds') or 0)
-        actual=float(probe.get('duration_seconds') or 0) if probe.get('success') else 0.0
+        actual=float(report.get('duration_seconds') or probe.get('duration_seconds') or 0)
         tolerance=max(3.0,expected*0.08)
         duration_ok=bool(probe.get('success') and (expected<=0 or abs(actual-expected)<=tolerance))
-        has_video_stream=bool(probe.get('success') and any(s.get('codec_type')=='video' for s in (probe.get('data') or {}).get('streams', [])))
-        ok=bool(basic and probe.get('success') and has_video_stream and duration_ok)
-        message='成片媒体探测通过' if ok else ('成片没有可识别的视频流' if probe.get('success') and not has_video_stream else 
-            probe.get('message') if not probe.get('success') else
-            f'成片时长与目标不符：目标 {expected:.1f}s，实际 {actual:.1f}s，允许误差 ±{tolerance:.1f}s')
+        has_video_stream=bool(report.get('has_video_stream') or (probe.get('success') and any(
+            s.get('codec_type')=='video' for s in (probe.get('data') or {}).get('streams', []))))
+        ok=bool(basic and probe.get('success') and has_video_stream and duration_ok and report.get('passed',False))
+        message='基础媒体质检通过' if ok else (
+            report.get('message') if not report.get('passed',False) else
+            ('成片没有可识别的视频流' if not has_video_stream else
+             f'成片时长与目标不符：目标 {expected:.1f}s，实际 {actual:.1f}s，允许误差 ±{tolerance:.1f}s'))
         timeline_path=os.path.join(self.root,eid,'canonical_timeline.json')
         d['stages']['qc']={'status':'done' if ok else 'blocked','result':{
             'success':ok,'path':p,'size':os.path.getsize(p) if basic else 0,
@@ -179,6 +183,7 @@ class EpisodePipeline:
             'duration_seconds':actual,'expected_duration_seconds':expected,
             'duration_tolerance_seconds':tolerance,'duration_ok':duration_ok,'has_video_stream':has_video_stream,
             'timeline_path':timeline_path if os.path.isfile(timeline_path) else None,
+            'quality_report':report,'warnings':report.get('warnings',[]),'errors':report.get('errors',[]),
             'message':message}}
         d['stage']='publish'
         return self.status(self._save(d)['episode_id'])
