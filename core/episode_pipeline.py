@@ -101,10 +101,25 @@ class EpisodePipeline:
                 rendered=local_media_engine.image_to_video(images[0]['path'],path,duration_seconds=duration)
                 if not rendered.get('success'):
                     return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 图片转视频失败：{rendered.get('message','未知错误')}",rendered)
+            # Use the director's planned duration when available, then normalize every shot
+            # to one frame size/rate so the final timeline matches the target episode length.
+            spec=shot.get('spec') or {}
+            try:
+                target_duration=float(spec.get('duration_seconds') or spec.get('duration') or duration)
+            except (TypeError, ValueError):
+                target_duration=float(duration or 5)
+            if target_duration <= 0:
+                target_duration=float(duration or 5)
+            normalized_path=os.path.join(clip_dir,f"{shot.get('index',0):04d}_{shot.get('shot_id','shot')}_normalized.mp4")
+            normalized=local_media_engine.normalize_video_clip(path,normalized_path,duration_seconds=target_duration)
+            if not normalized.get('success'):
+                return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 时长/画幅标准化失败：{normalized.get('message','未知错误')}",normalized)
+            path=normalized_path
+            duration=float(normalized.get('duration_seconds') or target_duration)
             clips.append(path)
-            clip_records.append({'shot_id':shot.get('shot_id'),'scene_id':(shot.get('spec') or {}).get('scene_id'),
+            clip_records.append({'shot_id':shot.get('shot_id'),'scene_id':spec.get('scene_id'),
                                  'path':path,'source_kind':source_kind,'duration_seconds':duration,
-                                 'spec':shot.get('spec') or {}})
+                                 'target_duration_seconds':target_duration,'spec':spec})
         if not clips:
             return self._block(d,'assemble','没有真实视频或可转换为视频的分镜图片')
         r=production_engine.assemble(clips,run_id='RUN-'+d['episode_id'].replace('EP-',''))
