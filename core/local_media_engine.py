@@ -83,6 +83,49 @@ class LocalMediaEngine:
             r['source_image'] = os.path.abspath(image)
         return r
 
+    def normalize_video_clip(self, source, output, duration_seconds, fps=24, width=1080, height=1920):
+        """Normalize one shot to its storyboard duration and a consistent vertical frame."""
+        if not source or not os.path.isfile(source) or os.path.getsize(source) <= 0:
+            return {'success': False, 'message': '镜头源视频不存在或为空'}
+        try:
+            duration = float(duration_seconds)
+            fps, width, height = int(fps), int(width), int(height)
+        except (TypeError, ValueError):
+            return {'success': False, 'message': '镜头标准化参数无效'}
+        if duration <= 0 or duration > 3600 or fps < 1 or fps > 60 or width < 2 or height < 2:
+            return {'success': False, 'message': '镜头标准化参数超出允许范围'}
+        width -= width % 2
+        height -= height % 2
+        probe = self.probe(source)
+        if not probe.get('success'):
+            return {'success': False, 'message': '镜头源视频无法通过 FFprobe 校验', 'detail': probe}
+        streams = (probe.get('data') or {}).get('streams', [])
+        has_audio = any(s.get('codec_type') == 'audio' for s in streams)
+        os.makedirs(os.path.dirname(output) or OUTPUT_DIR, exist_ok=True)
+        vf = (f"tpad=stop_mode=clone:stop_duration={duration},trim=duration={duration},"
+              f"setpts=PTS-STARTPTS,scale={width}:{height}:force_original_aspect_ratio=decrease,"
+              f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps},format=yuv420p")
+        command = ['ffmpeg', '-y', '-i', source, '-map', '0:v:0', '-vf', vf]
+        if has_audio:
+            command += ['-map', '0:a:0?', '-af', f'apad,atrim=duration={duration},asetpts=PTS-STARTPTS',
+                        '-c:a', 'aac', '-b:a', '192k']
+        else:
+            command += ['-an']
+        command += ['-t', str(duration), '-r', str(fps), '-c:v', 'libx264',
+                    '-preset', 'veryfast', '-crf', '20', '-movflags', '+faststart', output]
+        result = self._verified_output(self._run(command, 1800), output)
+        if result.get('success'):
+            actual = self.probe(output)
+            if not actual.get('success'):
+                return {'success': False, 'message': '标准化镜头生成后无法通过 FFprobe 校验', 'detail': actual}
+            actual_duration = float(actual.get('duration_seconds') or 0)
+            tolerance = max(0.15, 2.0 / fps)
+            if abs(actual_duration - duration) > tolerance:
+                return {'success': False, 'message': f'标准化镜头时长不符：目标 {duration:.3f}s，实际 {actual_duration:.3f}s'}
+            result.update({'duration_seconds': actual_duration, 'target_duration_seconds': duration,
+                           'source': os.path.abspath(source), 'has_audio': has_audio})
+        return result
+
     def concat_videos(self, inputs, output, transition=None):
         inputs = list(inputs or [])
         if not inputs:
