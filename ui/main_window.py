@@ -49,6 +49,7 @@ class MainWindow(QMainWindow):
         if dashboard:
             dashboard.create_requested.connect(self.open_creation_with_idea)
             dashboard.navigate_requested.connect(self.select)
+            dashboard.quick_requested.connect(self.handle_dashboard_quick)
         self.select('驾驶舱')
 
     def build_topbar(self):
@@ -91,7 +92,29 @@ class MainWindow(QMainWindow):
         page = self.pages.get('创作')
         if page is not None and hasattr(page, 'idea'):
             page.idea.setPlainText(idea)
+            page.generate()
         self.select('创作')
+
+    def handle_dashboard_quick(self, key, idea):
+        if key == '生成剧本':
+            self.open_creation_with_idea(idea)
+        elif key == '分镜设计':
+            self.open_creation_with_idea(idea)
+            page = self.pages.get('分镜')
+            if page:
+                page.refresh()
+                page.create()
+                self.select('分镜')
+        elif key in ('角色设定', '场景生成'):
+            self.open_creation_with_idea(idea)
+            self.select('人物场景')
+        elif key == '一键生成视频':
+            page = self.pages.get('一键成片')
+            if page:
+                page.idea.setText(idea)
+                page.create()
+                page.out.append('生产任务已创建。点击“一键跑完整集”开始执行；如果本机缺少图像/视频模型，系统会显示具体阻塞原因。')
+                self.select('一键成片')
     def select(self,key):
         routes={'驾驶舱':'驾驶舱','创作':'创作','生产':'生产','资产':'资产','模型':'模型','后期':'后期','系统':'系统'}
         target=routes.get(key,key); page=self.pages.get(target) or self.pages.get(key)

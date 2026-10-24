@@ -26,7 +26,11 @@ class EpisodePipeline:
     def load(self,eid): return json.load(open(self._path(eid),encoding='utf-8'))
     def create(self, idea, title=None, duration=60, ratio='9:16'):
         ep=episode_engine.create_episode(idea,title,duration,ratio)
-        plan=director_plan_engine.load_plans()[0]
+        # UUID-based plan IDs are not chronological when sorted lexically.
+        # Bind the pipeline to the exact plan created for this episode.
+        plan=next((p for p in director_plan_engine.load_plans() if p.get('plan_id') == ep.get('plan_id')), None)
+        if plan is None:
+            raise RuntimeError(f"Director Plan {ep.get('plan_id')} was not found after episode creation")
         d={'episode_id':ep['episode_id'],'plan_id':ep['plan_id'],'workflow_id':ep['workflow_id'],'title':ep['title'],'idea':idea,'duration_seconds':int(duration),'aspect_ratio':ratio,'status':'ready','stage':'plan','stages':{x:{'status':'pending','result':None} for x in self.STAGES},'shot_run_id':None,'final_video':None,'publish_package':None,'created_at':self._now(),'updated_at':self._now()}
         d['stages']['plan']={'status':'done','result':{'plan_id':plan.get('plan_id'),'shot_count':len(plan.get('shots',[]))}}
         return self._save(d)
