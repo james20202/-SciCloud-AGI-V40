@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import tempfile
 
@@ -28,7 +29,8 @@ def test_canonical_timeline_has_contiguous_order_and_provenance():
             {"episode_id": "EP-TEST", "title": "测试", "aspect_ratio": "9:16"},
             job, records, output
         )
-        timeline = json.load(open(output, encoding="utf-8"))
+        with open(output, encoding="utf-8") as stream:
+            timeline = json.load(stream)
         picture = timeline["tracks"][0]["children"]
         assert result["success"]
         assert picture[0]["start_seconds"] == 0
@@ -44,7 +46,8 @@ def test_canonical_timeline_has_contiguous_order_and_provenance():
 def test_timeline_uses_fallback_duration_for_invalid_duration():
     with tempfile.TemporaryDirectory() as root:
         clip = os.path.join(root, "shot.mp4")
-        open(clip, "wb").write(b"media")
+        with open(clip, "wb") as stream:
+            stream.write(b"media")
         out = os.path.join(root, "timeline.json")
         result = build_episode_timeline(
             {"episode_id": "EP-2"}, {"shots": []},
@@ -52,3 +55,43 @@ def test_timeline_uses_fallback_duration_for_invalid_duration():
               "spec": {"duration": 6}}], out
         )
         assert result["timeline"]["duration_seconds"] == 6
+
+
+def test_timeline_normalizes_nonfinite_duration_and_rejects_nonstandard_json():
+    with tempfile.TemporaryDirectory() as root:
+        clip = os.path.join(root, "shot.mp4")
+        with open(clip, "wb") as stream:
+            stream.write(b"media")
+        out = os.path.join(root, "timeline.json")
+        result = build_episode_timeline(
+            {"episode_id": "EP-NAN"}, {"shots": []},
+            [
+                {"shot_id": "S1", "path": clip, "source_kind": "video",
+                 "duration_seconds": math.nan, "spec": {"duration_seconds": math.inf, "duration": 7}},
+                {"shot_id": "S2", "path": clip, "source_kind": "video",
+                 "duration_seconds": -math.inf, "spec": {"duration": 3}},
+            ], out
+        )
+        timeline = result["timeline"]
+        assert timeline["tracks"][0]["children"][0]["duration_seconds"] == 7
+        assert timeline["tracks"][0]["children"][1]["duration_seconds"] == 3
+        assert math.isfinite(timeline["duration_seconds"])
+        with open(out, encoding="utf-8") as stream:
+            raw = stream.read()
+        assert "NaN" not in raw
+        assert "Infinity" not in raw
+        json.loads(raw, parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+
+
+def test_timeline_uses_zero_when_value_and_fallback_are_nonfinite():
+    with tempfile.TemporaryDirectory() as root:
+        clip = os.path.join(root, "shot.mp4")
+        with open(clip, "wb") as stream:
+            stream.write(b"media")
+        out = os.path.join(root, "timeline.json")
+        result = build_episode_timeline(
+            {"episode_id": "EP-INF"}, {"shots": []},
+            [{"shot_id": "S1", "path": clip, "duration_seconds": math.inf,
+              "spec": {"duration_seconds": math.nan, "duration": math.inf}}], out
+        )
+        assert result["timeline"]["duration_seconds"] == 0
