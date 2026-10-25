@@ -89,3 +89,10 @@ def test_registry_rejects_path_like_workflow_ids(tmp_path):
     registry = WorkflowRegistry(tmp_path / "builtins", tmp_path / "user")
     with pytest.raises(WorkflowManifestError, match="id 无效"):
         registry.get("../secret")
+
+
+def test_manifest_rejects_unsupported_capability():
+    broken = manifest()
+    broken["capability"] = "video.magic_remote_runner"
+    with pytest.raises(WorkflowManifestError, match="不支持的工作流 capability"):
+        validate_manifest(broken)
