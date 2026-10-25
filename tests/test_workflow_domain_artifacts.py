@@ -212,3 +212,39 @@ def test_artifact_paths_are_sanitized_and_json_writes_are_valid(monkeypatch, tmp
     assert os.path.commonpath([str(execution_root), os.path.abspath(path)]) == str(execution_root)
     with open(path, encoding="utf-8") as f:
         assert json.load(f) == {"safe": True}
+
+
+class RaisingMediaAdapter:
+    def execute(self, model, task, context):
+        raise RuntimeError("simulated adapter crash")
+
+
+def test_adapter_exception_marks_task_failed_not_running(monkeypatch, tmp_path):
+    engine, workflow = setup_engine(monkeypatch, tmp_path, "image")
+    monkeypatch.setattr(execution_module, "model_hub", FakeMediaModelHub())
+    monkeypatch.setattr(execution_module, "ADAPTERS", {"fake": RaisingMediaAdapter()})
+
+    result = engine.execute("WF-TEST", "TASK-05")
+
+    assert result["success"] is False
+    assert "simulated adapter crash" in result["message"]
+    assert workflow["tasks"][0]["status"] == "failed"
+
+
+def test_paused_workflow_does_not_execute_task(monkeypatch, tmp_path):
+    engine, workflow = setup_engine(monkeypatch, tmp_path, "image")
+    workflow["paused"] = True
+    monkeypatch.setattr(
+        execution_module.workflow_engine,
+        "start_task",
+        lambda workflow_id, task_id: workflow,
+    )
+    monkeypatch.setattr(execution_module, "model_hub", FakeMediaModelHub())
+    adapter = FakeMediaAdapter(outputs=[])
+    monkeypatch.setattr(execution_module, "ADAPTERS", {"fake": adapter})
+
+    result = engine.execute("WF-TEST", "TASK-05")
+
+    assert result["success"] is False
+    assert "已暂停" in result["message"]
+    assert workflow["tasks"][0]["status"] == "ready"
