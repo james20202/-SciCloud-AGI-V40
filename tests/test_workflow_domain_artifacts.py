@@ -248,3 +248,42 @@ def test_paused_workflow_does_not_execute_task(monkeypatch, tmp_path):
     assert result["success"] is False
     assert "已暂停" in result["message"]
     assert workflow["tasks"][0]["status"] == "ready"
+
+
+
+class FakeComfyUIRenderAdapter:
+    def __init__(self, media_path):
+        self.media_path = media_path
+        self.context = None
+
+    def render(self, model, task, context):
+        self.context = context
+        os.makedirs(context["output_dir"], exist_ok=True)
+        with open(self.media_path, "wb") as handle:
+            handle.write(b"rendered-media")
+        return FakeAdapterResult(
+            outputs=[{"path": self.media_path, "kind": "image", "shot_id": "SHOT-1"}],
+            success=True,
+        )
+
+    def execute(self, model, task, context):
+        raise AssertionError("ComfyUI media execution must use render(), not queue-only execute()")
+
+
+def test_comfyui_media_task_waits_for_rendered_output_and_sets_safe_output_dir(monkeypatch, tmp_path):
+    engine, workflow = setup_engine(monkeypatch, tmp_path, "image")
+    media_path = str(tmp_path / "rendered.png")
+    adapter = FakeComfyUIRenderAdapter(media_path)
+    monkeypatch.setattr(
+        execution_module,
+        "model_hub",
+        type("ComfyHub", (), {"find_for_skill": lambda self, *args: {"model_id": "COMFY-LOCAL", "adapter": "comfyui", "enabled": True}})(),
+    )
+    monkeypatch.setattr(execution_module, "ADAPTERS", {"comfyui": adapter})
+
+    result = engine.execute("WF-TEST", "TASK-05")
+
+    assert result["success"] is True
+    assert os.path.isfile(media_path)
+    assert adapter.context["output_dir"].startswith(str(tmp_path / "output" / "comfyui"))
+    assert workflow["tasks"][0]["status"] == "done"
