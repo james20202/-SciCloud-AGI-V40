@@ -10,7 +10,7 @@ def _workflow(tmp_path):
     media = tmp_path / "episode.mp4"
     media.write_bytes(b"fake-media-for-package-test")
     prompt = tmp_path / "prompts.json"
-    prompt.write_text(json.dumps({"subtitle_srt_draft": "1\\n00:00:00,000 --> 00:00:01,000\\n测试\\n"}), encoding="utf-8")
+    prompt.write_text(json.dumps({"subtitle_srt_draft": "1\n00:00:00,000 --> 00:00:01,000\n测试\n"}), encoding="utf-8")
     qc = tmp_path / "qc.json"
     qc.write_text(json.dumps({"success": True}), encoding="utf-8")
     return {
