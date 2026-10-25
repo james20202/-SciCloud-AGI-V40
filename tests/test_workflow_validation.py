@@ -45,3 +45,33 @@ def test_empty_workflow_is_not_reported_completed():
     wf = {"tasks": [], "paused": False}
     engine._refresh_ready(wf)
     assert wf["status"] == "ready"
+
+
+def test_dependency_waits_for_every_upstream_task_of_same_type(tmp_path, monkeypatch):
+    storyboard = {"storyboard_id": "STORYBOARD-DEPS", "shots": []}
+    monkeypatch.setattr("core.workflow_engine.storyboard_director",
+                        SimpleNamespace(create_from_plan=lambda plan: storyboard))
+    engine = WorkflowEngine(project_dir=str(tmp_path))
+    plan = {
+        "plan_id": "PLAN-MULTI-STORY", "title": "多段剧本",
+        "tasks": [
+            {"id": "STORY-1", "type": "story"},
+            {"id": "STORY-2", "type": "story"},
+            {"id": "CHAR-1", "type": "character"},
+            {"id": "SB-1", "type": "storyboard"},
+        ],
+    }
+    wf = engine.create_from_plan(plan)
+    by_id = {task["id"]: task for task in wf["tasks"]}
+    assert by_id["CHAR-1"]["depends_on"] == ["STORY-1", "STORY-2"]
+    assert by_id["SB-1"]["depends_on"] == ["CHAR-1"]
+    engine.complete_task(wf["workflow_id"], "STORY-1")
+    wf = engine.load(wf["workflow_id"])
+    by_id = {task["id"]: task for task in wf["tasks"]}
+    assert by_id["STORY-2"]["status"] == STATUS_READY
+    assert by_id["CHAR-1"]["status"] == STATUS_PENDING
+    engine.complete_task(wf["workflow_id"], "STORY-2")
+    wf = engine.load(wf["workflow_id"])
+    by_id = {task["id"]: task for task in wf["tasks"]}
+    assert by_id["CHAR-1"]["status"] == STATUS_READY
+    assert by_id["SB-1"]["status"] == STATUS_PENDING
