@@ -104,3 +104,41 @@ def test_adapter_rejects_invalid_manifest_before_submission():
     )
     assert workflow is None
     assert '工作流清单无效' in error
+
+
+
+def test_render_rejects_unbounded_or_non_numeric_wait_settings():
+    adapter = ComfyUIAdapter()
+    model = {"endpoint": "http://127.0.0.1:8188"}
+    with patch.object(adapter, "execute", return_value=type(
+        "Submission", (), {"success": True, "data": {"prompt_id": "p1"}, "message": "queued"}
+    )()):
+        result = adapter.render(model, {"timeout": 7201}, {})
+    assert not result.success
+    assert "timeout" in result.message
+
+    with patch.object(adapter, "execute", return_value=type(
+        "Submission", (), {"success": True, "data": {"prompt_id": "p1"}, "message": "queued"}
+    )()):
+        result = adapter.render(model, {"poll_interval": 11}, {})
+    assert not result.success
+    assert "poll_interval" in result.message
+
+
+def test_download_outputs_uses_atomic_file_replacement_and_cleans_temp_files(tmp_path):
+    adapter = ComfyUIAdapter()
+    model = {"endpoint": "http://127.0.0.1:8188"}
+    refs = [{
+        "filename": "render.png",
+        "subfolder": "",
+        "type": "output",
+        "node_id": "9",
+        "kind": "image",
+    }]
+
+    with patch("core.adapters.comfyui_adapter.request.urlopen", return_value=FakeResponse(b"valid-media")):
+        saved = adapter.download_outputs(model, refs, str(tmp_path))
+
+    assert len(saved) == 1
+    assert open(saved[0]["path"], "rb").read() == b"valid-media"
+    assert not list(tmp_path.glob(".comfyui-output-*"))
