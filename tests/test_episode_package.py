@@ -83,3 +83,21 @@ def test_episode_package_keeps_duplicate_basenames_without_overwriting(tmp_path)
         ]
         assert len(artifact_names) == 2
         assert len(set(artifact_names)) == 2
+
+
+def test_episode_package_rejects_failed_qc_report(tmp_path):
+    workflow = _workflow(tmp_path)
+    qc = tmp_path / "qc.json"
+    qc.write_text(json.dumps({"success": False, "message": "视频流缺失"}), encoding="utf-8")
+    workflow["tasks"][2]["outputs"] = [str(qc)]
+    with pytest.raises(ValueError, match="质检报告未通过"):
+        build_episode_package(workflow, str(tmp_path / "failed-qc.zip"))
+
+
+def test_episode_package_requires_explicit_successful_qc_report(tmp_path):
+    workflow = _workflow(tmp_path)
+    qc = tmp_path / "qc.json"
+    qc.write_text(json.dumps({"message": "no success field"}), encoding="utf-8")
+    workflow["tasks"][2]["outputs"] = [str(qc)]
+    with pytest.raises(ValueError, match="明确通过的质检报告"):
+        build_episode_package(workflow, str(tmp_path / "unknown-qc.zip"))
