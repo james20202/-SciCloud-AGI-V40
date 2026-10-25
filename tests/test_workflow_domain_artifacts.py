@@ -61,7 +61,7 @@ class FakePlanEngine:
 class FakeStoryboardDirector:
     def __init__(self, root, shots=None):
         self.root = root
-        self.shots = [{"id": "S1"}, {"id": "S2"}] if shots is None else shots
+        self.shots = [{"id": "S1", "duration": 4, "visual_prompt": "青色剑光", "dialogue": "接招", "scene_id": "SCENE-1", "character_ids": ["CHAR-1"]}, {"id": "S2", "duration": 6, "visual_prompt": "山门崩裂", "voiceover": "大劫将至"}] if shots is None else shots
         os.makedirs(root, exist_ok=True)
         self.path = os.path.join(root, "STORYBOARD-TEST.json")
         with open(self.path, "w", encoding="utf-8") as f:
