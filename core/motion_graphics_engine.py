@@ -59,13 +59,14 @@ class MotionGraphicsEngine:
         height -= height % 2
         palette = self.STYLES.get(style, self.STYLES["xianxia"])
         image = Image.new("RGB", (width, height))
-        pixels = image.load()
+        # Horizontal scanlines avoid a Python-level loop over every pixel,
+        # keeping card generation responsive on low-memory Apple Silicon Macs.
+        gradient = ImageDraw.Draw(image)
         top, bottom = palette["background"], tuple(max(0, c - 7) for c in palette["background"])
         for y in range(height):
             mix = y / max(1, height - 1)
             row = tuple(int(top[i] * (1 - mix) + bottom[i] * mix) for i in range(3))
-            for x in range(width):
-                pixels[x, y] = row
+            gradient.line((0, y, width, y), fill=row)
         draw = ImageDraw.Draw(image, "RGBA")
         margin = int(width * 0.075)
         accent = palette["accent"]
