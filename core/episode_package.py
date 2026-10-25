@@ -36,6 +36,7 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
     seen: set[str] = set()
     subtitles: list[tuple[str, str]] = []
     qc_payloads: list[dict[str, Any]] = []
+    qc_report_found = False
     final_video_found = False
     video_suffixes = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
@@ -71,7 +72,11 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
                     with open(absolute, encoding="utf-8") as handle:
                         payload = json.load(handle)
                     if isinstance(payload, dict):
-                        qc_payloads.append(payload)
+                        if payload.get("success") is False:
+                            raise ValueError("质检报告未通过，拒绝生成成片交付包")
+                        if isinstance(payload.get("success"), bool):
+                            qc_report_found = True
+                            qc_payloads.append(payload)
                 except (OSError, ValueError):
                     pass
             if task.get("type") == "prompt" and suffix == ".json":
@@ -84,6 +89,8 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
                 except (OSError, ValueError):
                     pass
 
+    if not qc_report_found:
+        raise ValueError("没有找到明确通过的质检报告，拒绝生成成片交付包")
     if not final_video_found:
         raise ValueError("最终剪辑任务没有可用的非空最终视频文件，拒绝生成成片交付包")
     if not files:
