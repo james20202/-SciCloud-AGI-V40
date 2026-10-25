@@ -129,18 +129,34 @@ def apply_budget_to_graph(graph: dict[str, Any], budget: dict[str, Any]) -> tupl
     result = copy.deepcopy(graph)
     report = {"profile": budget["profile"], "recommended_tier": budget["recommended_tier"],
               "warnings": list(budget["warnings"]), "adjustments": []}
-    max_values = {
-        "width": budget["max_width"],
-        "height": budget["max_height"],
-        "length": budget["max_frames_per_job"],
-        "num_frames": budget["max_frames_per_job"],
-        "batch_size": budget["batch_size"],
-    }
     for node_id, node in result.items():
         if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
             continue
         inputs = node["inputs"]
-        for key, ceiling in max_values.items():
+        width, height = inputs.get("width"), inputs.get("height")
+        if (isinstance(width, (int, float)) and not isinstance(width, bool)
+                and isinstance(height, (int, float)) and not isinstance(height, bool)
+                and width > 0 and height > 0
+                and (width > budget["max_width"] or height > budget["max_height"])):
+            scale = min(budget["max_width"] / width, budget["max_height"] / height)
+            new_width = max(64, int((width * scale) // 64) * 64)
+            new_height = max(64, int((height * scale) // 64) * 64)
+            for key, old_value, new_value in (("width", width, new_width), ("height", height, new_height)):
+                if old_value != new_value:
+                    report["adjustments"].append({
+                        "node_id": str(node_id), "input": key,
+                        "from": old_value, "to": new_value,
+                    })
+                    inputs[key] = new_value
+        elif isinstance(width, (int, float)) and not isinstance(width, bool) and width > budget["max_width"]:
+            report["adjustments"].append({"node_id": str(node_id), "input": "width", "from": width, "to": budget["max_width"]})
+            inputs["width"] = budget["max_width"]
+        elif isinstance(height, (int, float)) and not isinstance(height, bool) and height > budget["max_height"]:
+            report["adjustments"].append({"node_id": str(node_id), "input": "height", "from": height, "to": budget["max_height"]})
+            inputs["height"] = budget["max_height"]
+        for key, ceiling in (("length", budget["max_frames_per_job"]),
+                             ("num_frames", budget["max_frames_per_job"]),
+                             ("batch_size", budget["batch_size"])):
             value = inputs.get(key)
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 continue
