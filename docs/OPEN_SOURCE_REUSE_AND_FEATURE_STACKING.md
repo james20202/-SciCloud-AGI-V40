@@ -21,6 +21,25 @@ This is a selective reuse plan for SciCloud AGI V40. Repositories are reference 
 - core/execution_engine.py: title_card and motion_graphics workflow task types invoke the engine, verify a non-empty MP4, persist task outputs, and register the result as an asset.
 - tests/test_motion_graphics_execution.py: workflow success and renderer failure-path tests.
 
+## Additional candidates from the next review pass
+
+| Project | License / runtime caveat | Compatible ideas to extract | Integration decision |
+| --- | --- | --- | --- |
+| [Story Claw](https://github.com/ZC89757/story-claw) | MIT; Node/Electron, API-backed image/LLM stages, ComfyUI + H3 rendering; primarily packaged for Windows | Stage-aware character/scene variants, persistent per-character voice map, resumable episode stages, clip-level visual checks | Do not port the Electron application. Translate the data contracts and failure-mode tests into SciCloud's Python services. Keep remote image APIs optional. |
+| [VideoClaw](https://github.com/HITsz-TMG/VideoClaw) | MIT; Python + Node/WebUI, configured model APIs and external generation services | Human approval gates, stage-by-stage production artifacts, first-frame / first-last-frame / reference-image video modes, episode continuation | Reuse workflow concepts and provider capability schemas only after source-level review. Avoid importing its UI or service stack. |
+| [Jellyfish](https://github.com/Forget-C/Jellyfish) | Apache-2.0; backend/front-end and Docker services including database, queue and object-storage components | Asset lifecycle, storyboard review, asynchronous job status/cancel/recovery, consistency management | Reference architecture only for now; its infrastructure footprint is too heavy to transplant into the 8 GB Mac desktop build. |
+| [LocalMiniDrama](https://github.com/xuanyustudio/LocalMiniDrama) | MIT; JavaScript application, remote model calls may still be needed | Episode workspace, skip-existing/resume behavior, batch retry, project ZIP import/export, prompt editing and multi-aspect-ratio support | Treat as UX and workflow-contract reference. Do not replace SciCloud's Python/Qt core or assume it provides offline inference. |
+| [Comic-drama](https://github.com/tccnnd/Comic-drama) | MIT; early local-first prototype | Canonical timeline, provider-neutral media tasks, 2.5D fallback, project-scoped assets and delivery manifests | Compare contracts against SciCloud's existing canonical timeline and FFmpeg assembly before adopting anything; avoid duplicate schemas. |
+
+### Compatibility filter applied before importing any upstream code
+
+1. **Preserve SciCloud's runtime:** Python/Qt desktop, existing workflow engine, local Ollama, optional ComfyUI, FFmpeg, current project and asset directories.
+2. **No wholesale app imports:** do not add a second project database, job scheduler, web front end, or provider system when SciCloud already has the corresponding service.
+3. **Low-memory first:** CPU-friendly deterministic features should work without downloading models; GPU/video models remain optional and should be capability-checked before task execution.
+4. **Stable artifact contracts:** new modules must preserve workflow_id, task_id, storyboard_id, shot identity, duration, visual prompt, dialogue, character references, and real output paths.
+5. **Feature adoption must include tests:** happy path, missing dependency, interrupted task/retry, invalid output, legacy workflow compatibility, and no-network/no-model-download behavior where applicable.
+6. **License and provenance:** keep attribution and required license texts for copied code; ideas/schema patterns are reviewed separately from verbatim code. No project is considered safe to import merely because its README says open source.
+
 ## Next high-value stacks
 
 1. Shot-level production contract: keep shot_id, visual prompt, dialogue, character references, and duration attached through image/video/audio and final edit.
