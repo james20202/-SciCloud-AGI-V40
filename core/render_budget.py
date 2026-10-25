@@ -88,3 +88,36 @@ def budget_from_task(task: dict[str, Any]) -> dict[str, Any] | None:
     if config is None: return None
     if not isinstance(config, dict): raise ValueError("resource_budget must be an object")
     return recommend_render_budget(**config).to_dict()
+
+
+
+def apply_budget_to_graph(graph: dict[str, Any], budget: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Clamp common video/image node inputs to budget limits, preserving graph shape."""
+    import copy
+    result = copy.deepcopy(graph)
+    report = {"profile": budget["profile"], "recommended_tier": budget["recommended_tier"],
+              "warnings": list(budget["warnings"]), "adjustments": []}
+    max_values = {
+        "width": budget["max_width"],
+        "height": budget["max_height"],
+        "length": budget["max_frames_per_job"],
+        "num_frames": budget["max_frames_per_job"],
+        "batch_size": budget["batch_size"],
+    }
+    for node_id, node in result.items():
+        if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+            continue
+        inputs = node["inputs"]
+        for key, ceiling in max_values.items():
+            value = inputs.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            if value > ceiling:
+                report["adjustments"].append({
+                    "node_id": str(node_id), "input": key,
+                    "from": value, "to": ceiling,
+                })
+                inputs[key] = ceiling
+    if report["adjustments"]:
+        report["warnings"].append("已自动收紧工作流中的常见尺寸/帧数/批量输入；请检查工作流语义并先做短片段测试。")
+    return result, report
