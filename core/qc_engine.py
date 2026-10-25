@@ -47,6 +47,14 @@ class QCEngine:
                     check['success']=False
                     check['message']='媒体技术质检未通过：'+str(media_result.get('message') or ', '.join(media_result.get('errors') or []))
                     ok=False
+            if good and ext in {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg', '.opus'}:
+                audio_result=media_quality_engine.inspect_audio(p)
+                media_results.append(audio_result)
+                check['media_quality']=audio_result
+                if not audio_result.get('passed'):
+                    check['success']=False
+                    check['message']='音频技术质检未通过：'+str(audio_result.get('message') or ', '.join(audio_result.get('errors') or []))
+                    ok=False
             if good and ext in {'.png','.jpg','.jpeg','.webp'}:
                 vr=vision_qc.analyze(p, {'task_id':task.get('id'),'task_type':task.get('type'),'name':task.get('name','')})
                 vision_results.append(vr)
