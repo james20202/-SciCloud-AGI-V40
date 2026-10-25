@@ -2,6 +2,7 @@ import json, os
 from datetime import datetime
 from core.workflow_engine import workflow_engine, STATUS_DONE
 from core.vision_qc import vision_qc
+from core.shot_contract import normalize_shots, timeline_duration
 
 MEDIA_EXT={'.mp4','.mov','.mkv','.webm','.avi','.m4v','.mp3','.wav','.m4a','.aac','.flac','.png','.jpg','.jpeg','.webp'}
 JSON_TASKS={'story','character','scene','storyboard','prompt'}
@@ -40,7 +41,29 @@ class QCEngine:
                 vr=vision_qc.analyze(path, {'task_id':task.get('id'),'task_type':task.get('type'),'name':task.get('name','')})
                 vision_results.append(vr)
                 if vr.get('semantic_checked') and not vr.get('success'): ok=False
-        return {'success':ok,'code':'OK' if ok else 'INVALID_OUTPUT','message':'产物与视觉审核通过' if ok and vision_results and any(v.get('semantic_checked') for v in vision_results) else ('产物级检查通过（未配置视觉模型）' if ok else '发现产物或视觉异常'),'task_id':task.get('id'),'checks':checks,'vision':vision_results}
+        contract_checks=[]
+        # Prompt-stage artifacts are the hand-off boundary for shot metadata. Validate
+        # their actual JSON payload, not only that the file exists and parses.
+        if task.get('type') == 'prompt':
+            for item in outputs:
+                path=item.get('path') if isinstance(item,dict) else item
+                if not isinstance(path,str) or os.path.splitext(path)[1].lower() != '.json' or not os.path.isfile(path):
+                    continue
+                try:
+                    with open(path,encoding='utf-8') as handle:
+                        payload=json.load(handle)
+                    shots=payload.get('prompts') if isinstance(payload,dict) else None
+                    canonical=normalize_shots(shots)
+                    measured=timeline_duration(canonical)
+                    timing=payload.get('timing_summary',{})
+                    reported=timing.get('actual_duration_seconds') if isinstance(timing,dict) else None
+                    if reported is not None and abs(float(reported)-measured)>0.05:
+                        raise ValueError('timing_summary 与镜头时长合计不一致')
+                    contract_checks.append({'path':path,'success':True,'shot_count':len(canonical),'duration_seconds':measured})
+                except Exception as exc:
+                    ok=False
+                    contract_checks.append({'path':path,'success':False,'message':f'镜头生产契约检查失败：{exc}'})
+        return {'success':ok,'code':'OK' if ok else 'INVALID_OUTPUT','message':'产物与视觉审核通过' if ok and vision_results and any(v.get('semantic_checked') for v in vision_results) else ('产物级检查通过（未配置视觉模型）' if ok else '发现产物或视觉异常'),'task_id':task.get('id'),'checks':checks,'shot_contract_checks':contract_checks,'vision':vision_results}
 
     def _structural_check(self, wf):
         tasks=wf.get('tasks', [])
