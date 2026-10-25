@@ -21,7 +21,12 @@ class StoryboardDirector:
         self.directory = directory
         os.makedirs(self.directory, exist_ok=True)
 
-    def _path(self, storyboard_id): return os.path.join(self.directory, storyboard_id + '.json')
+    def _path(self, storyboard_id):
+        if not isinstance(storyboard_id, str) or not storyboard_id.strip() or storyboard_id in {'.', '..'}:
+            raise ValueError('storyboard_id 无效')
+        if '/' in storyboard_id or chr(92) in storyboard_id or chr(0) in storyboard_id:
+            raise ValueError('storyboard_id 不允许包含路径分隔符或空字符')
+        return os.path.join(self.directory, storyboard_id + '.json')
 
     def create_from_plan(self, plan):
         shots=[]
