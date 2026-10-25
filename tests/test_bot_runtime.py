@@ -76,3 +76,69 @@ def test_payload_must_be_json_serializable_before_handler_runs():
         runtime.publish("test.event", {"not_json": object()})
 
     assert seen == []
+
+
+def test_retry_skips_handler_that_already_completed(tmp_path):
+    runtime = BotRuntime(str(tmp_path / "bot-events.jsonl"))
+    calls = {"first": 0, "second": 0}
+
+    def first_handler(event):
+        calls["first"] += 1
+        return "first-ok"
+
+    def second_handler(event):
+        calls["second"] += 1
+        if calls["second"] == 1:
+            raise RuntimeError("temporary failure")
+        return "second-ok"
+
+    runtime.subscribe("workflow.ready", first_handler, handler_id="first")
+    runtime.subscribe("workflow.ready", second_handler, handler_id="second")
+
+    first = runtime.publish("workflow.ready", {"workflow_id": "WF-3"}, event_id="evt-partial")
+    second = runtime.publish("workflow.ready", {"workflow_id": "WF-3"}, event_id="evt-partial")
+
+    assert first["success"] is False
+    assert second["success"] is True
+    assert calls == {"first": 1, "second": 2}
+
+
+def test_event_id_cannot_be_reused_for_different_payload(tmp_path):
+    runtime = BotRuntime(str(tmp_path / "bot-events.jsonl"))
+    seen = []
+    runtime.subscribe("asset.created", lambda event: seen.append(event["payload"]["asset_id"]), handler_id="index")
+
+    assert runtime.publish("asset.created", {"asset_id": "A-1"}, event_id="evt-same")["success"]
+    conflict = runtime.publish("asset.created", {"asset_id": "A-2"}, event_id="evt-same")
+
+    assert conflict["success"] is False
+    assert "拒绝复用" in conflict["message"]
+    assert seen == ["A-1"]
+
+
+def test_completed_handler_checkpoint_survives_restart(tmp_path):
+    log_path = tmp_path / "bot-events.jsonl"
+    first = BotRuntime(str(log_path))
+    calls = {"done": 0, "retry": 0}
+
+    def done_handler(event):
+        calls["done"] += 1
+        return "done"
+
+    def retry_handler(event):
+        calls["retry"] += 1
+        if calls["retry"] == 1:
+            raise RuntimeError("first attempt fails")
+        return "recovered"
+
+    first.subscribe("task.failed", done_handler, handler_id="done")
+    first.subscribe("task.failed", retry_handler, handler_id="retry")
+    assert not first.publish("task.failed", {"task_id": "T-1"}, event_id="evt-restart")["success"]
+
+    second = BotRuntime(str(log_path))
+    second.subscribe("task.failed", done_handler, handler_id="done")
+    second.subscribe("task.failed", retry_handler, handler_id="retry")
+    result = second.publish("task.failed", {"task_id": "T-1"}, event_id="evt-restart")
+
+    assert result["success"] is True
+    assert calls == {"done": 1, "retry": 2}
