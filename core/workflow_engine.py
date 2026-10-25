@@ -1,4 +1,4 @@
-import json, os, tempfile
+import json, math, os, tempfile
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.storyboard_engine import storyboard_director
@@ -80,6 +80,18 @@ class WorkflowEngine:
             task=dict(t)
             task_type=task.get('type')
             if not task_type: raise ValueError(f"任务 {task['id']} 缺少 type")
+            # The final edit artifact represents the whole episode, so carry the
+            # director's duration target into media QC as an explicit contract.
+            if task_type == 'edit':
+                intent=plan.get('intent',{}) if isinstance(plan.get('intent'),dict) else {}
+                raw_target=intent.get('duration_seconds',intent.get('target_duration_seconds'))
+                if raw_target is not None:
+                    try:
+                        target=float(raw_target)
+                        if math.isfinite(target) and target > 0:
+                            task.setdefault('expected_duration_seconds',round(target,3))
+                    except (TypeError,ValueError,OverflowError):
+                        pass
             task['status']=STATUS_READY if not deps.get(task_type) else STATUS_PENDING
             task['progress']=0
             dependencies=list(deps.get(task_type,[]))
