@@ -55,3 +55,17 @@ This is a selective reuse plan for SciCloud AGI V40. Repositories are reference 
 - Pin dependencies and use isolated optional adapters.
 - A CI pass validates contracts and tests; it does not establish visual quality or prove a real Mac/ComfyUI render.
 - Keep the feature branch PR open and unmerged until the user validates the install package.
+
+
+## Audio/subtitle timeline stack (2026-10-26)
+
+The latest candidate review found timeline-first production patterns in [ai-video-studio](https://github.com/yfge/ai-video-studio), and SRT/subtitle export patterns in [AI Video Pipeline](https://github.com/Youhai020616/ai-video-pipeline). These are references only: both describe hosted generation providers in parts of their pipelines, so SciCloud must not silently add API dependencies or download speech models.
+
+SciCloud now has a small native `core/audio_timeline.py` contract derived from the existing canonical shot contract:
+- emits per-shot start/end ranges and keeps dialogue, voiceover, and character IDs attached;
+- drafts SRT cues from dialogue, falling back to voiceover where dialogue is absent;
+- rejects overlapping or invalid SRT cues;
+- explicitly marks timestamps as planned shot timing and requires real-audio alignment before final export. It does not claim word-level transcription or actual TTS timing.
+- no new dependency, second scheduler, database, UI framework, or model download.
+
+Tests cover timing, subtitle output, duplicate shot IDs, and overlap rejection. The next integration step is to connect this manifest to actual TTS output durations and final edit/export tasks, preserving legacy workflow JSON.
