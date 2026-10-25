@@ -2,6 +2,7 @@ import json, os
 from datetime import datetime
 from core.workflow_engine import workflow_engine, STATUS_DONE
 from core.vision_qc import vision_qc
+from core.media_quality_engine import media_quality_engine
 from core.shot_contract import normalize_shots, timeline_duration
 
 MEDIA_EXT={'.mp4','.mov','.mkv','.webm','.avi','.m4v','.mp3','.wav','.m4a','.aac','.flac','.png','.jpg','.jpeg','.webp'}
@@ -31,13 +32,30 @@ class QCEngine:
         outputs=task.get('outputs') or []
         if not isinstance(outputs, list) or not outputs:
             return {'success':False,'code':'NO_OUTPUT','message':f"任务 {task.get('id')} 没有登记有效的产物路径列表",'task_id':task.get('id'),'checks':[]}
-        checks=[]; ok=True; vision_results=[]
+        checks=[]; ok=True; vision_results=[]; media_results=[]
         for item in outputs:
             path=item.get('path') if isinstance(item,dict) else item
             good,msg=self._file_check(path)
             checks.append({'path':path,'success':good,'message':msg})
             ok=ok and good
-            if good and os.path.splitext(path)[1].lower() in {'.png','.jpg','.jpeg','.webp'}:
+            ext=os.path.splitext(path)[1].lower() if isinstance(path,str) else ''
+            if good and ext in {'.mp4','.mov','.mkv','.webm','.avi','.m4v'}:
+                media_result=media_quality_engine.inspect(path)
+                media_results.append(media_result)
+                checks[-1]['media_quality']=media_result
+                if not media_result.get('passed'):
+                    checks[-1]['success']=False
+                    checks[-1]['message']='媒体技术质检未通过：'+str(media_result.get('message') or ', '.join(media_result.get('errors') or []))
+                    ok=False
+            elif good and ext in {'.mp3','.wav','.m4a','.aac','.flac','.ogg','.opus'}:
+                media_result=media_quality_engine.inspect_audio(path)
+                media_results.append(media_result)
+                checks[-1]['media_quality']=media_result
+                if not media_result.get('passed'):
+                    checks[-1]['success']=False
+                    checks[-1]['message']='音频技术质检未通过：'+str(media_result.get('message') or ', '.join(media_result.get('errors') or []))
+                    ok=False
+            if good and ext in {'.png','.jpg','.jpeg','.webp'}:
                 vr=vision_qc.analyze(path, {'task_id':task.get('id'),'task_type':task.get('type'),'name':task.get('name','')})
                 vision_results.append(vr)
                 if vr.get('semantic_checked') and not vr.get('success'): ok=False
@@ -74,7 +92,7 @@ class QCEngine:
                 except Exception as exc:
                     ok=False
                     contract_checks.append({'path':path,'success':False,'message':f'镜头生产契约检查失败：{exc}'})
-        return {'success':ok,'code':'OK' if ok else 'INVALID_OUTPUT','message':'产物与视觉审核通过' if ok and vision_results and any(v.get('semantic_checked') for v in vision_results) else ('产物级检查通过（未配置视觉模型）' if ok else '发现产物或视觉异常'),'task_id':task.get('id'),'checks':checks,'shot_contract_checks':contract_checks,'vision':vision_results}
+        return {'success':ok,'code':'OK' if ok else 'INVALID_OUTPUT','message':'产物与视觉审核通过' if ok and vision_results and any(v.get('semantic_checked') for v in vision_results) else ('产物级检查通过（未配置视觉模型）' if ok else '发现产物或视觉异常'),'task_id':task.get('id'),'checks':checks,'shot_contract_checks':contract_checks,'vision':vision_results,'media_quality':media_results}
 
     def _structural_check(self, wf):
         tasks=wf.get('tasks', [])
