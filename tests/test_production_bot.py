@@ -6,6 +6,9 @@ class FakeRuntime:
         self.subscriptions = {}
 
     def subscribe(self, event_type, handler, *, handler_id=None):
+        existing = self.subscriptions.get(event_type)
+        if existing and existing[1] != handler_id:
+            raise ValueError("duplicate handler")
         self.subscriptions[event_type] = (handler, handler_id)
 
 
@@ -18,8 +21,8 @@ class FakeDirector:
         self.calls = []
         self.result = result or {"success": True, "message": "completed", "steps": 4}
 
-    def run(self, workflow_id):
-        self.calls.append(workflow_id)
+    def run(self, workflow_id, max_steps=50):
+        self.calls.append((workflow_id, max_steps))
         return self.result
 
 
@@ -49,7 +52,7 @@ def test_production_bot_delegates_to_existing_auto_director_when_enabled():
     assert result["success"] is True
     assert result["requires_approval"] is False
     assert result["execution"]["steps"] == 4
-    assert director.calls == ["WF-2"]
+    assert director.calls == [("WF-2", 50)]
 
 
 def test_production_bot_rejects_event_without_workflow_id():
@@ -72,3 +75,27 @@ def test_configure_wires_runtime_and_subscriber_without_starting_execution():
     assert handler == bot.handle_workflow_ready
     assert handler_id == "scicloud.production_bot.workflow_ready.v1"
     assert director.calls == []
+
+
+def test_explicit_approval_runs_only_requested_workflow():
+    director = FakeDirector()
+    bot = ProductionBot(director)
+
+    result = bot.approve_and_run("WF-APPROVED", max_steps=7)
+
+    assert result["success"] is True
+    assert result["requires_approval"] is False
+    assert director.calls == [("WF-APPROVED", 7)]
+
+
+def test_configure_is_idempotent_for_same_runtime_and_engine():
+    runtime, engine = FakeRuntime(), FakeEngine()
+    first_director, second_director = FakeDirector(), FakeDirector()
+
+    first = configure_production_bot(runtime, engine, first_director)
+    second = configure_production_bot(runtime, engine, second_director, auto_execute=True)
+
+    assert first is second
+    assert second.director is second_director
+    assert second.auto_execute is True
+    assert len(runtime.subscriptions) == 1
