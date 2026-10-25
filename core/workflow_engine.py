@@ -1,4 +1,4 @@
-import json, os
+import json, os, tempfile
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.storyboard_engine import storyboard_director
@@ -89,9 +89,21 @@ class WorkflowEngine:
         self._refresh_ready(wf); self.save(wf); self.current=wf; self._emit('workflow.ready',wf); return wf
 
     def save(self,wf):
+        if not isinstance(wf, dict) or not wf.get('workflow_id'):
+            raise ValueError('工作流缺少有效 workflow_id')
+        path=self._path(wf['workflow_id'])
         wf['updated_at']=self._now()
-        with open(self._path(wf['workflow_id']),'w',encoding='utf-8') as f: json.dump(wf,f,ensure_ascii=False,indent=2)
-        return self._path(wf['workflow_id'])
+        fd,tmp_path=tempfile.mkstemp(prefix='.workflow-',suffix='.tmp',dir=self.workflow_dir)
+        try:
+            with os.fdopen(fd,'w',encoding='utf-8') as f:
+                json.dump(wf,f,ensure_ascii=False,indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path,path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        return path
 
     def load(self,wid):
         with open(self._path(wid),encoding='utf-8') as f: wf=json.load(f)
