@@ -114,15 +114,33 @@ class ExecutionEngine:
         if not adapter: return {'success':False,'message':f"未注册适配器：{model.get('adapter')}"}
         workflow_engine.start_task(wid,task_id)
         result=adapter.execute(model,task,{'workflow':task.get('workflow'),'command':task.get('command')})
-        if result.success:
+        raw_outputs=list(result.outputs or [])
+        valid_outputs=[]
+        for output in raw_outputs:
+            output_path=output.get('path') if isinstance(output,dict) else output
+            if output_path and os.path.isfile(output_path) and os.path.getsize(output_path)>0:
+                valid_outputs.append(output)
+        # A successful adapter response is not proof that media was actually written.
+        # Keep media tasks running only when a verifiable, non-empty file exists.
+        media_types={'image','video','voice','sound','edit'}
+        effective_success=bool(result.success)
+        effective_message=result.message
+        if effective_success and task.get('type') in media_types and not valid_outputs:
+            effective_success=False
+            effective_message='适配器返回成功，但没有生成可验证的非空媒体文件；任务未标记完成。'
+        if effective_success:
             workflow_engine.complete_task(wid,task_id)
         else:
-            workflow_engine.fail_task(wid,task_id,result.message)
-        out=result.to_dict(); out['model_id']=model.get('model_id'); out['adapter']=model.get('adapter')
+            workflow_engine.fail_task(wid,task_id,effective_message or '执行失败')
+        out=result.to_dict()
+        out['success']=effective_success
+        out['message']=effective_message
+        out['outputs']=valid_outputs
+        out['model_id']=model.get('model_id'); out['adapter']=model.get('adapter')
         wf_saved=workflow_engine.load(wid)
-        next(t for t in wf_saved['tasks'] if t['id']==task_id)['outputs']=list(result.outputs or [])
+        next(t for t in wf_saved['tasks'] if t['id']==task_id)['outputs']=valid_outputs
         workflow_engine.save(wf_saved)
-        registered=asset_manager.register_execution(task, result.outputs, project_id=wf.get('plan_id'), data=result.data)
+        registered=asset_manager.register_execution(task,valid_outputs,project_id=wf.get('plan_id'),data=result.data)
         out['assets']=registered
         self.last_result=out; return out
 
