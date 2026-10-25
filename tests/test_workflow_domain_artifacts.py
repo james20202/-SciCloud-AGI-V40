@@ -131,6 +131,12 @@ def test_prompt_task_generates_one_prompt_per_storyboard_shot(monkeypatch, tmp_p
     assert payload["prompts"][0]["dialogue"] == "接招"
     assert payload["prompts"][0]["character_ids"] == ["CHAR-1"]
     assert payload["prompts"][1]["voiceover"] == "大劫将至"
+    assert payload["timing_summary"]["target_duration_seconds"] == 60.0
+    assert payload["timing_summary"]["actual_duration_seconds"] == 10.0
+    assert payload["timing_summary"]["delta_seconds"] == -50.0
+    assert payload["timing_summary"]["within_target_tolerance"] is False
+    assert result["data"]["timing_summary"]["shot_count"] == 2
+    assert "与目标 60s 相差 -50s" in result["message"]
     assert workflow["tasks"][0]["status"] == "done"
 
 
