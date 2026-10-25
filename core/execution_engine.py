@@ -9,9 +9,10 @@ from core.asset_manager import asset_manager
 from core.director_plan import director_plan_engine
 from core.storyboard_engine import storyboard_director
 from core.qc_engine import qc_engine
+from core.motion_graphics_engine import motion_graphics_engine
 
 ADAPTERS={'ffmpeg':FFmpegAdapter(),'comfyui':ComfyUIAdapter(),'tts_command':TTSCommandAdapter()}
-TASK_TO_SKILL={'story':'SKILL-STORY','character':'SKILL-STORY','scene':'SKILL-STORY','storyboard':'SKILL-STORY','prompt':'SKILL-PROMPT','image':'SKILL-IMAGE','video':'SKILL-VIDEO','voice':'SKILL-TTS','sound':'SKILL-SOUND','edit':'SKILL-EDIT','qc':'SKILL-QC'}
+TASK_TO_SKILL={'story':'SKILL-STORY','character':'SKILL-STORY','scene':'SKILL-STORY','storyboard':'SKILL-STORY','prompt':'SKILL-PROMPT','image':'SKILL-IMAGE','video':'SKILL-VIDEO','voice':'SKILL-TTS','sound':'SKILL-SOUND','edit':'SKILL-EDIT','qc':'SKILL-QC','title_card':'SKILL-EDIT','motion_graphics':'SKILL-EDIT'}
 
 class ExecutionEngine:
     def __init__(self): self.last_result=None
@@ -74,6 +75,49 @@ class ExecutionEngine:
             else:
                 workflow_engine.fail_task(wid,task_id,result.get('message','QC failed'))
             out=dict(result); out['outputs']=[path]; self.last_result=out; return out
+        if task.get('type') in {'title_card','motion_graphics'}:
+            blocked=self._start_or_reject(wid,task_id)
+            if blocked:
+                return blocked
+            try:
+                safe_wid=re.sub(r'[^A-Za-z0-9_-]+','_',str(wid)).strip('_') or 'workflow'
+                safe_tid=re.sub(r'[^A-Za-z0-9_-]+','_',str(task_id)).strip('_') or 'task'
+                output_dir=task.get('output_dir') or os.path.join(PROJECT_DIR,'output','motion_graphics',safe_wid,safe_tid)
+                output_dir=os.path.abspath(output_dir)
+                os.makedirs(output_dir,exist_ok=True)
+                output_path=os.path.join(output_dir,f'{safe_tid}.mp4')
+                render=motion_graphics_engine.render_card(
+                    title=task.get('title') or task.get('text') or task.get('name') or '章节标题',
+                    output_video=output_path,
+                    duration_seconds=task.get('duration_seconds',task.get('duration',2.0)),
+                    subtitle=task.get('subtitle',''),
+                    aspect_ratio=task.get('aspect_ratio','9:16'),
+                    style=task.get('style','xianxia'),
+                    fps=task.get('fps',24),
+                )
+                if not isinstance(render,dict) or not render.get('success'):
+                    raise RuntimeError((render or {}).get('message','动效标题卡生成失败') if isinstance(render,dict) else '动效引擎返回无效结果')
+                actual_path=render.get('output') or render.get('path') or output_path
+                if not os.path.isfile(actual_path) or os.path.getsize(actual_path)<=0:
+                    raise RuntimeError('动效标题卡引擎报告成功，但输出文件不存在或为空')
+                payload={'kind':'motion_graphics','title':task.get('title') or task.get('text') or task.get('name') or '章节标题',
+                         'render':render,'output_path':actual_path,'workflow_id':wid,'task_id':task_id}
+                wf_saved=workflow_engine.load(wid)
+                saved_task=next(t for t in wf_saved['tasks'] if t['id']==task_id)
+                saved_task['outputs']=[actual_path]
+                saved_task['result']=payload
+                workflow_engine.save(wf_saved)
+                registered=asset_manager.register_execution(task,[actual_path],project_id=wf.get('plan_id'),data=payload)
+                workflow_engine.complete_task(wid,task_id)
+                result={'success':True,'message':'动效标题卡已生成并登记为媒体资产','outputs':[actual_path],'assets':registered,'data':payload}
+            except Exception as exc:
+                try:
+                    workflow_engine.fail_task(wid,task_id,str(exc))
+                except Exception:
+                    pass
+                result={'success':False,'message':str(exc),'task_id':task_id,'workflow_id':wid,'outputs':[]}
+            self.last_result=result
+            return result
         model=model_hub.find_for_skill(task.get('type'),task.get('model_id'))
         # Planning tasks must produce real domain artifacts, not just generic execution logs.
         if task.get('type') in {'story','character','scene','storyboard','prompt'}:
