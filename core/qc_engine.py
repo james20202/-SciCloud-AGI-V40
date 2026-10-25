@@ -2,6 +2,7 @@ import json, os
 from datetime import datetime
 from core.workflow_engine import workflow_engine, STATUS_DONE
 from core.vision_qc import vision_qc
+from core.media_quality_engine import media_quality_engine
 
 MEDIA_EXT={'.mp4','.mov','.mkv','.webm','.avi','.m4v','.mp3','.wav','.m4a','.aac','.flac','.png','.jpg','.jpeg','.webp'}
 JSON_TASKS={'story','character','scene','storyboard','prompt'}
