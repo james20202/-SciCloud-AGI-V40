@@ -22,7 +22,14 @@ class WorkflowEngine:
         self.last_event_error=None
         self.last_event_result=None
 
-    def _path(self,wid): return os.path.join(self.workflow_dir,f'{wid}.json')
+    def _path(self,wid):
+        # Workflow IDs are used as filenames; reject traversal and path separators.
+        if not isinstance(wid, str) or not wid.strip() or wid in {'.', '..'}:
+            raise ValueError('workflow_id 无效')
+        if any(ch in wid for ch in ('/', '\\\\', '\\x00')):
+            raise ValueError('workflow_id 不允许包含路径分隔符')
+        return os.path.join(self.workflow_dir, f'{wid}.json')
+
     def _now(self): return datetime.now().isoformat(timespec='seconds')
 
     def _emit(self, event_type, wf, task=None):
@@ -149,10 +156,42 @@ class WorkflowEngine:
         task['status']=STATUS_FAILED; task['error']=error; self._refresh_ready(wf); self.save(wf); self._emit('task.failed',wf,task); return wf
 
     def retry_task(self,wid,task_id):
-        wf=self.load(wid); task=next((t for t in wf['tasks'] if t['id']==task_id),None)
+        wf=self.load(wid)
+        task=next((t for t in wf['tasks'] if t['id']==task_id),None)
         if not task: raise ValueError(f'任务不存在：{task_id}')
-        task['status']=STATUS_PENDING; task['progress']=0; task['error']=None; task['started_at']=None; task['finished_at']=None
-        self._refresh_ready(wf); self.save(wf); self._emit('task.retried',wf,task); return wf
+        if task.get('status') not in (STATUS_FAILED, STATUS_DONE, STATUS_PENDING, STATUS_READY):
+            raise ValueError(f"任务当前状态 {task.get('status')} 不允许重试")
+
+        # A retry invalidates every downstream stage transitively. Otherwise a
+        # downstream task may remain "done" while still pointing at stale outputs.
+        reset_types={task.get('type')}
+        changed=True
+        while changed:
+            changed=False
+            for candidate in wf.get('tasks', []):
+                if candidate.get('type') in reset_types:
+                    continue
+                dependencies=candidate.get('depends_on', [])
+                if any(dep in reset_types for dep in dependencies):
+                    reset_types.add(candidate.get('type'))
+                    changed=True
+
+        reset=[]
+        for candidate in wf.get('tasks', []):
+            if candidate.get('id') == task_id or candidate.get('type') in reset_types:
+                candidate['status']=STATUS_PENDING
+                candidate['progress']=0
+                candidate['error']=None
+                candidate['started_at']=None
+                candidate['finished_at']=None
+                candidate['outputs']=[]
+                candidate.pop('result', None)
+                reset.append(candidate)
+        self._refresh_ready(wf)
+        self.save(wf)
+        self._emit('task.retried',wf,task)
+        wf['retry_invalidated_task_ids']=[candidate.get('id') for candidate in reset]
+        return wf
 
     def pause(self,wid):
         wf=self.load(wid); wf['paused']=True; self._refresh_ready(wf); self.save(wf); self._emit('workflow.paused',wf); return wf
