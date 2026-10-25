@@ -30,7 +30,9 @@ class QCEngine:
 
     def inspect_task(self,wf,task):
         outputs=task.get('outputs') or []
-        if not isinstance(outputs, list) or not outputs:
+        if not isinstance(outputs, (list, tuple)):
+            return {'success':False,'code':'INVALID_OUTPUTS','message':'任务产物必须是路径列表','task_id':task.get('id'),'checks':[]}
+        if not outputs:
             return {'success':False,'code':'NO_OUTPUT','message':f"任务 {task.get('id')} 没有登记有效的产物路径列表",'task_id':task.get('id'),'checks':[]}
         checks=[]; ok=True; vision_results=[]; media_results=[]
         for item in outputs:
@@ -145,6 +147,12 @@ class QCEngine:
                 'results':[],
                 'checked_at':datetime.now().isoformat(timespec='seconds'),
             }
+            self.last_result=final
+            return final
+        failed=[task for task in wf.get('tasks',[]) if isinstance(task,dict) and task.get('status')=='failed' and task.get('type')!='qc']
+        if failed:
+            task=failed[0]
+            final={'success':False,'workflow_id':wid,'message':f"工作流存在失败任务：{task.get('name') or task.get('id')}；{task.get('error') or '执行失败'}",'failed_task_id':task.get('id'),'failed_task_type':task.get('type'),'results':[],'checked_at':datetime.now().isoformat(timespec='seconds')}
             self.last_result=final
             return final
         structure=self._structural_check(wf)
