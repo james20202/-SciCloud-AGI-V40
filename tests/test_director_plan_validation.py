@@ -46,3 +46,16 @@ def test_director_page_rejects_malformed_shot_duration():
     with pytest.raises(ValueError, match="总时长"):
         page._validate_plan(bad)
     page.close()
+
+
+@pytest.mark.parametrize("duration", [0, -1, float("nan"), float("inf"), -float("inf")])
+def test_storyboard_conversion_rejects_invalid_shot_duration(tmp_path, duration):
+    director = StoryboardDirector(directory=str(tmp_path))
+    plan = {
+        "plan_id": "PLAN-BAD-DURATION", "title": "非法时长",
+        "characters": [], "scenes": [],
+        "shots": [{"id": "SHOT-1", "duration": duration, "visual_prompt": "test"}],
+    }
+    with pytest.raises(ValueError, match="时长"):
+        director.create_from_plan(plan)
+    assert list(tmp_path.glob("STORYBOARD-*.json")) == []
