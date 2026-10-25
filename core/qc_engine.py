@@ -39,8 +39,41 @@ class QCEngine:
                 if vr.get('semantic_checked') and not vr.get('success'): ok=False
         return {'success':ok,'code':'OK' if ok else 'INVALID_OUTPUT','message':'产物与视觉审核通过' if ok and vision_results and any(v.get('semantic_checked') for v in vision_results) else ('产物级检查通过（未配置视觉模型）' if ok else '发现产物或视觉异常'),'task_id':task.get('id'),'checks':checks,'vision':vision_results}
 
+    def _structural_check(self, wf):
+        tasks=wf.get('tasks', [])
+        ids=[task.get('id') for task in tasks]
+        if any(not task_id for task_id in ids) or len(set(ids)) != len(ids):
+            return {'success':False,'code':'INVALID_TASK_IDS','message':'工作流任务 ID 缺失或重复'}
+
+        workflow_storyboard_id=wf.get('storyboard_id')
+        for task in tasks:
+            task_storyboard_id=task.get('storyboard_id')
+            if task_storyboard_id and workflow_storyboard_id and task_storyboard_id != workflow_storyboard_id:
+                return {'success':False,'code':'STORYBOARD_LINK_MISMATCH','message':f"任务 {task.get('id')} 的 storyboard_id 与工作流不一致"}
+
+        # Guard against stale/corrupt persisted states where a downstream task
+        # was marked done even though another task in a required stage is not.
+        for task in tasks:
+            if task.get('status') != STATUS_DONE or task.get('type') == 'qc':
+                continue
+            for dependency_type in task.get('depends_on', []):
+                prerequisites=[candidate for candidate in tasks if candidate.get('type') == dependency_type]
+                if prerequisites and not all(candidate.get('status') == STATUS_DONE for candidate in prerequisites):
+                    return {
+                        'success':False,
+                        'code':'DEPENDENCY_INCOMPLETE',
+                        'message':f"任务 {task.get('id')} 已标记完成，但依赖阶段 {dependency_type} 尚未全部完成",
+                        'task_id':task.get('id'),
+                    }
+        return {'success':True,'code':'STRUCTURE_OK','message':'任务 ID、分镜关联和阶段依赖结构有效'}
+
     def inspect_workflow(self,wid):
         wf=workflow_engine.load(wid)
+        structure=self._structural_check(wf)
+        if not structure.get('success'):
+            final={'success':False,'workflow_id':wid,'message':structure['message'],'failed_check':structure,'results':[],'checked_at':datetime.now().isoformat(timespec='seconds')}
+            self.last_result=final
+            return final
         done=[t for t in wf.get('tasks',[]) if t.get('status')==STATUS_DONE and t.get('type')!='qc']
         results=[]
         # QC all completed executable tasks; planning artifacts are real JSON outputs too.
