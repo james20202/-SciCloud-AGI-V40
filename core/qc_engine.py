@@ -1,6 +1,6 @@
 import json, os
 from datetime import datetime
-from core.workflow_engine import workflow_engine, STATUS_DONE
+from core.workflow_engine import workflow_engine, STATUS_DONE, STATUS_FAILED
 from core.vision_qc import vision_qc
 from core.media_quality_engine import media_quality_engine
 
@@ -55,6 +55,11 @@ class QCEngine:
 
     def inspect_workflow(self,wid):
         wf=workflow_engine.load(wid)
+        failed=[t for t in wf.get('tasks',[]) if t.get('status')==STATUS_FAILED and t.get('type')!='qc']
+        if failed:
+            task=failed[0]
+            final={'success':False,'workflow_id':wid,'message':f\"工作流存在失败任务：{task.get('name') or task.get('id')}；{task.get('error') or '执行失败'}\",'failed_task_id':task.get('id'),'failed_task_type':task.get('type'),'results':[],'checked_at':datetime.now().isoformat(timespec='seconds')}
+            self.last_result=final; return final
         done=[t for t in wf.get('tasks',[]) if t.get('status')==STATUS_DONE and t.get('type')!='qc']
         results=[]
         # QC all completed executable tasks; planning artifacts are real JSON outputs too.
