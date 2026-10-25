@@ -59,7 +59,13 @@ class BotRuntime:
         key = _handler_key(handler, handler_id)
         with self._lock:
             handlers = self._handlers.setdefault(event_type, [])
-            if any(existing_key == key and existing_handler is not handler for existing_key, existing_handler in handlers):
+            if handler_id is None:
+                base_key = key
+                suffix = 2
+                while any(existing_key == key and existing_handler is not handler for existing_key, existing_handler in handlers):
+                    key = f"{base_key}#{suffix}"
+                    suffix += 1
+            elif any(existing_key == key and existing_handler is not handler for existing_key, existing_handler in handlers):
                 raise ValueError(f"同一事件的 handler_id 重复：{key}")
             if not any(existing_key == key for existing_key, _ in handlers):
                 handlers.append((key, handler))
