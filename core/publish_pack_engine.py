@@ -16,6 +16,8 @@ class PublishPackEngine:
         src=os.path.join(PROJECT_DIR,'episodes',episode_id+'.json')
         if not os.path.exists(src):
             return {'success':False,'message':'Episode 不存在'}
+        if final_video is not None and (not os.path.isfile(final_video) or os.path.getsize(final_video) <= 0):
+            return {'success':False,'message':'指定的最终视频不存在或为空，未生成发布包','final_video':final_video}
         outdir=os.path.join(OUTPUT_DIR,'publish',episode_id)
         os.makedirs(outdir,exist_ok=True)
         copied=[]
