@@ -1,5 +1,6 @@
 """Local media QC using ffprobe and FFmpeg's blackdetect/silencedetect filters."""
 import json
+import math
 import os
 import re
 import shutil
@@ -103,16 +104,16 @@ class MediaQualityEngine:
             return {"success": False, "passed": False, "message": "ffprobe 返回的数据无法解析",
                     "warnings": [], "errors": ["invalid_probe"]}
         errors = []
-        if duration <= 0:
+        if not math.isfinite(duration) or duration <= 0:
             errors.append("invalid_duration")
         if not any(s.get("codec_type") == "audio" for s in streams):
             errors.append("missing_audio_stream")
         if expected_duration is not None:
             try:
                 expected = float(expected_duration)
-                if expected <= 0:
+                if not math.isfinite(expected) or expected <= 0:
                     errors.append("invalid_expected_duration")
-                elif abs(duration - expected) > max(3.0, expected * 0.08):
+                elif math.isfinite(duration) and abs(duration - expected) > max(3.0, expected * 0.08):
                     errors.append("duration_mismatch")
             except (ValueError, TypeError):
                 errors.append("invalid_expected_duration")
