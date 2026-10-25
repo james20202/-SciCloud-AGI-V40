@@ -42,11 +42,12 @@ def test_audio_timeline_rejects_duplicate_shot_ids():
         raise AssertionError("duplicate shot IDs should be rejected")
 
 
-def test_audio_timeline_tolerates_non_string_optional_text():
-    timeline = build_audio_timeline([{
-        "shot_id": "S1", "duration": 2, "dialogue": None, "voiceover": 42,
-    }])
-    assert timeline["shot_count"] == 1
-    assert timeline["subtitle_cues"] == []
-    assert timeline["segments"][0]["dialogue"] == ""
-    assert timeline["segments"][0]["voiceover"] == ""
+def test_audio_timeline_rejects_malformed_optional_text_contract():
+    try:
+        build_audio_timeline([{
+            "shot_id": "S1", "duration": 2, "dialogue": None, "voiceover": 42,
+        }])
+    except ValueError as exc:
+        assert "voiceover 必须是字符串" in str(exc)
+    else:
+        raise AssertionError("malformed voiceover must be rejected by the canonical shot contract")
