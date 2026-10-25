@@ -26,8 +26,8 @@ class WorkflowEngine:
         # Workflow IDs are used as filenames; reject traversal and path separators.
         if not isinstance(wid, str) or not wid.strip() or wid in {'.', '..'}:
             raise ValueError('workflow_id 无效')
-        if any(ch in wid for ch in ('/', '\\\\', '\\x00')):
-            raise ValueError('workflow_id 不允许包含路径分隔符')
+        if '/' in wid or chr(92) in wid or chr(0) in wid:
+            raise ValueError('workflow_id 不允许包含路径分隔符或空字符')
         return os.path.join(self.workflow_dir, f'{wid}.json')
 
     def _now(self): return datetime.now().isoformat(timespec='seconds')
@@ -187,10 +187,10 @@ class WorkflowEngine:
                 candidate['outputs']=[]
                 candidate.pop('result', None)
                 reset.append(candidate)
+        wf['retry_invalidated_task_ids']=[candidate.get('id') for candidate in reset]
         self._refresh_ready(wf)
         self.save(wf)
         self._emit('task.retried',wf,task)
-        wf['retry_invalidated_task_ids']=[candidate.get('id') for candidate in reset]
         return wf
 
     def pause(self,wid):
