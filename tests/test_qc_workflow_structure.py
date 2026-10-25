@@ -105,3 +105,16 @@ def test_qc_accepts_structured_output_record(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["checks"][0]["path"] == str(output)
+
+
+def test_qc_returns_structured_error_when_workflow_cannot_be_loaded(monkeypatch):
+    import core.qc_engine as qc_module
+
+    engine = QCEngine()
+    monkeypatch.setattr(qc_module.workflow_engine, "load", lambda _wid: (_ for _ in ()).throw(OSError("corrupt workflow")))
+
+    result = engine.inspect_workflow("WF-CORRUPT")
+
+    assert result["success"] is False
+    assert result["failed_check"]["code"] == "WORKFLOW_LOAD_FAILED"
+    assert "corrupt workflow" in result["message"]
