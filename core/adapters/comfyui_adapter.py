@@ -1,4 +1,4 @@
-import json, os, time, uuid
+import json, os, time, uuid, tempfile
 from pathlib import Path
 from urllib import request, parse
 from urllib.error import HTTPError, URLError
@@ -150,14 +150,24 @@ class ComfyUIAdapter(BaseAdapter):
                 safe_name = os.path.basename(ref['filename'])
                 stem, ext = os.path.splitext(safe_name)
                 target = os.path.join(output_dir, f"{stem}_{ref['node_id']}_{uuid.uuid4().hex[:6]}{ext.lower()}")
-                with open(target, 'wb') as f:
-                    f.write(content)
-                if os.path.isfile(target) and os.path.getsize(target) > 0:
-                    saved.append({'path': os.path.abspath(target), 'kind': ref['kind'],
-                                  'size': os.path.getsize(target), 'source_filename': safe_name})
-                else:
-                    try: os.remove(target)
-                    except OSError: pass
+                fd, temporary = tempfile.mkstemp(prefix='.comfyui-output-', suffix=ext.lower(), dir=output_dir)
+                try:
+                    with os.fdopen(fd, 'wb') as f:
+                        f.write(content)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    if os.path.isfile(temporary) and os.path.getsize(temporary) > 0:
+                        os.replace(temporary, target)
+                    if os.path.isfile(target) and os.path.getsize(target) > 0:
+                        saved.append({'path': os.path.abspath(target), 'kind': ref['kind'],
+                                      'size': os.path.getsize(target), 'source_filename': safe_name})
+                    else:
+                        try: os.remove(target)
+                        except OSError: pass
+                finally:
+                    if os.path.exists(temporary):
+                        try: os.remove(temporary)
+                        except OSError: pass
             except Exception:
                 continue
         return saved
@@ -171,8 +181,16 @@ class ComfyUIAdapter(BaseAdapter):
         if not submitted.success:
             return submitted
         prompt_id = submitted.data.get('prompt_id')
-        completed = self.wait(model, prompt_id, timeout=task.get('timeout', 1800),
-                              interval=task.get('poll_interval', 2))
+        try:
+            timeout = float(task.get('timeout', 1800))
+            interval = float(task.get('poll_interval', 2))
+            if not (0 < timeout <= 7200):
+                raise ValueError('timeout 必须大于 0 且不超过 7200 秒')
+            if not (0 < interval <= 10):
+                raise ValueError('poll_interval 必须大于 0 且不超过 10 秒')
+        except (TypeError, ValueError) as exc:
+            return AdapterResult(False, f'ComfyUI 等待参数无效：{exc}', data={'prompt_id': prompt_id})
+        completed = self.wait(model, prompt_id, timeout=timeout, interval=interval)
         if not completed.success:
             return completed
         refs = completed.outputs or self._output_refs(completed.data.get('outputs') or {})
