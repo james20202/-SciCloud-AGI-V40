@@ -71,3 +71,41 @@ def test_prompt_qc_rejects_audio_timeline_duration_mismatch(tmp_path):
     result = QCEngine().inspect_task({}, {"id": "PROMPT-AUDIO-BAD", "type": "prompt", "outputs": [artifact]})
     assert result["success"] is False
     assert "audio_timeline 与镜头时长合计不一致" in result["shot_contract_checks"][0]["message"]
+
+
+def test_prompt_qc_rejects_timeline_far_below_target_duration(tmp_path):
+    artifact = _write(tmp_path / "prompts_short_episode.json", {
+        "prompts": [
+            {"shot_id": "S1", "duration": 5, "visual_prompt": "山门"},
+            {"shot_id": "S2", "duration": 5, "visual_prompt": "剑光"},
+        ],
+        "timing_summary": {
+            "target_duration_seconds": 60,
+            "actual_duration_seconds": 10,
+            "within_target_tolerance": False,
+        },
+    })
+    result = QCEngine().inspect_task({}, {
+        "id": "PROMPT-SHORT", "type": "prompt", "outputs": [artifact]
+    })
+    assert result["success"] is False
+    assert result["shot_contract_checks"][0]["success"] is False
+    assert "与目标 60s 不匹配" in result["shot_contract_checks"][0]["message"]
+
+
+def test_prompt_qc_accepts_timeline_within_target_tolerance(tmp_path):
+    artifact = _write(tmp_path / "prompts_on_target.json", {
+        "prompts": [
+            {"shot_id": "S1", "duration": 30, "visual_prompt": "山门"},
+            {"shot_id": "S2", "duration": 29.5, "visual_prompt": "剑光"},
+        ],
+        "timing_summary": {
+            "target_duration_seconds": 60,
+            "actual_duration_seconds": 59.5,
+            "within_target_tolerance": True,
+        },
+    })
+    result = QCEngine().inspect_task({}, {
+        "id": "PROMPT-ON-TARGET", "type": "prompt", "outputs": [artifact]
+    })
+    assert result["success"] is True
