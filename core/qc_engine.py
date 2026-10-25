@@ -28,19 +28,31 @@ class QCEngine:
 
     def inspect_task(self,wf,task):
         outputs=task.get('outputs') or []
-        if not outputs:
-            return {'success':False,'code':'NO_OUTPUT','message':f"任务 {task.get('id')} 没有登记任何真实产物",'task_id':task.get('id'),'checks':[]}
+        if not isinstance(outputs, list) or not outputs:
+            return {'success':False,'code':'NO_OUTPUT','message':f"任务 {task.get('id')} 没有登记有效的产物路径列表",'task_id':task.get('id'),'checks':[]}
         checks=[]; ok=True; vision_results=[]
-        for p in outputs:
-            good,msg=self._file_check(p); checks.append({'path':p,'success':good,'message':msg}); ok=ok and good
-            if good and os.path.splitext(p)[1].lower() in MEDIA_EXT and os.path.splitext(p)[1].lower() in {'.png','.jpg','.jpeg','.webp'}:
-                vr=vision_qc.analyze(p, {'task_id':task.get('id'),'task_type':task.get('type'),'name':task.get('name','')})
+        for item in outputs:
+            path=item.get('path') if isinstance(item,dict) else item
+            good,msg=self._file_check(path)
+            checks.append({'path':path,'success':good,'message':msg})
+            ok=ok and good
+            if good and os.path.splitext(path)[1].lower() in {'.png','.jpg','.jpeg','.webp'}:
+                vr=vision_qc.analyze(path, {'task_id':task.get('id'),'task_type':task.get('type'),'name':task.get('name','')})
                 vision_results.append(vr)
                 if vr.get('semantic_checked') and not vr.get('success'): ok=False
         return {'success':ok,'code':'OK' if ok else 'INVALID_OUTPUT','message':'产物与视觉审核通过' if ok and vision_results and any(v.get('semantic_checked') for v in vision_results) else ('产物级检查通过（未配置视觉模型）' if ok else '发现产物或视觉异常'),'task_id':task.get('id'),'checks':checks,'vision':vision_results}
 
     def _structural_check(self, wf):
         tasks=wf.get('tasks', [])
+        if not isinstance(tasks, list):
+            return {'success':False,'code':'INVALID_TASKS','message':'工作流 tasks 必须是列表'}
+        if any(not isinstance(task, dict) for task in tasks):
+            return {'success':False,'code':'INVALID_TASKS','message':'工作流包含非对象任务'}
+        for task in tasks:
+            if not isinstance(task.get('type'), str) or not task.get('type').strip():
+                return {'success':False,'code':'INVALID_TASK_TYPE','message':f"任务 {task.get('id')} 缺少有效 type"}
+            if not isinstance(task.get('depends_on', []), list) or any(not isinstance(dep, str) for dep in task.get('depends_on', [])):
+                return {'success':False,'code':'INVALID_DEPENDENCIES','message':f"任务 {task.get('id')} 的 depends_on 格式无效"}
         ids=[task.get('id') for task in tasks]
         if any(not isinstance(task_id, str) or not task_id.strip() for task_id in ids):
             return {'success':False,'code':'INVALID_TASK_IDS','message':'工作流任务 ID 缺失或格式无效'}
