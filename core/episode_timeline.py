@@ -43,7 +43,14 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
         duration = _number(record.get("duration_seconds"), 0)
         if duration <= 0:
             spec = record.get("spec") or {}
-            duration = _number(spec.get("duration_seconds", spec.get("duration", 5)), 5)
+            # Prefer the first positive finite duration, falling through when a
+            # higher-priority field exists but contains NaN/Infinity/zero.
+            duration = 0.0
+            for candidate in (spec.get("duration_seconds"), spec.get("duration"), 5):
+                candidate_duration = _number(candidate, 0)
+                if candidate_duration > 0:
+                    duration = candidate_duration
+                    break
         source = os.path.abspath(record.get("path", ""))
         is_real_video = record.get("source_kind") == "video"
         if is_real_video:
