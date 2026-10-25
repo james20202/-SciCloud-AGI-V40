@@ -32,10 +32,13 @@ class QCEngine:
         outputs=task.get('outputs') or []
         if not outputs:
             return {'success':False,'code':'NO_OUTPUT','message':f"任务 {task.get('id')} 没有登记任何真实产物",'task_id':task.get('id'),'checks':[]}
+        if not isinstance(outputs, (list, tuple)):
+            return {'success':False,'code':'INVALID_OUTPUTS','message':'任务产物必须是路径列表','task_id':task.get('id'),'checks':[]}
         checks=[]; ok=True; vision_results=[]; media_results=[]
         for p in outputs:
             good,msg=self._file_check(p); check={'path':p,'success':good,'message':msg}; checks.append(check); ok=ok and good
-            ext=os.path.splitext(p)[1].lower()
+            # Invalid path entries must produce a failed QC result, not crash the workflow.
+            ext=os.path.splitext(p)[1].lower() if isinstance(p, str) else ''
             if good and ext in VIDEO_EXT:
                 media_result=media_quality_engine.inspect(p)
                 media_results.append(media_result)
