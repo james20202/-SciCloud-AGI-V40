@@ -158,7 +158,7 @@ class ExecutionEngine:
         wf_saved=workflow_engine.load(wid)
         next(t for t in wf_saved['tasks'] if t['id']==task_id)['outputs']=valid_outputs
         workflow_engine.save(wf_saved)
-        registered=asset_manager.register_execution(task,valid_outputs,project_id=wf.get('plan_id'),data=result.data)
+        registered=asset_manager.register_execution(task,valid_outputs,project_id=wf.get('plan_id'),data=result.data) if valid_outputs else []
         out['assets']=registered
         self.last_result=out; return out
 
