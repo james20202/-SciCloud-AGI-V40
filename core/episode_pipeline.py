@@ -1,4 +1,5 @@
 import json, os
+import math
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.episode_engine import episode_engine
@@ -14,6 +15,22 @@ from core.shot_consistency import shot_consistency_engine
 from core.media_quality_engine import media_quality_engine
 from core.character_reference_engine import character_reference_engine
 from core.script_asset_extractor import script_asset_extractor
+
+def _positive_duration(*values, default=5.0):
+    """Return the first finite, positive duration; ignore malformed AI/media values."""
+    for value in values:
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if math.isfinite(number) and number > 0:
+            return number
+    try:
+        fallback = float(default)
+    except (TypeError, ValueError, OverflowError):
+        fallback = 5.0
+    return fallback if math.isfinite(fallback) and fallback > 0 else 5.0
+
 
 class EpisodePipeline:
     """Durable episode pipeline; unavailable media capabilities remain blocked."""
@@ -129,7 +146,7 @@ class EpisodePipeline:
                     return self._block(d,'assemble',f"分镜 {shot.get('shot_id')} 缺少有效视频和图片素材")
                 source_kind='image_to_video_fallback'
                 spec=shot.get('spec') or {}
-                duration=spec.get('duration_seconds') or spec.get('duration') or 5
+                duration=_positive_duration(spec.get('duration_seconds'), spec.get('duration'), default=5)
                 path=os.path.join(clip_dir,f"{shot.get('index',0):04d}_{shot.get('shot_id','shot')}.mp4")
                 fallback_width,fallback_height=(1080,1920) if d.get('aspect_ratio','9:16')=='9:16' else (1920,1080)
                 rendered=local_media_engine.image_to_video(images[0]['path'],path,duration_seconds=duration,
@@ -139,12 +156,9 @@ class EpisodePipeline:
             # Use the director's planned duration when available, then normalize every shot
             # to one frame size/rate so the final timeline matches the target episode length.
             spec=shot.get('spec') or {}
-            try:
-                target_duration=float(spec.get('duration_seconds') or spec.get('duration') or duration)
-            except (TypeError, ValueError):
-                target_duration=float(duration or 5)
-            if target_duration <= 0:
-                target_duration=float(duration or 5)
+            target_duration=_positive_duration(
+                spec.get('duration_seconds'), spec.get('duration'), duration, default=5
+            )
             target_width,target_height=(1080,1920) if d.get('aspect_ratio','9:16')=='9:16' else (1920,1080)
             normalized_path=os.path.join(clip_dir,f"{shot.get('index',0):04d}_{shot.get('shot_id','shot')}_normalized.mp4")
             normalized=local_media_engine.normalize_video_clip(path,normalized_path,duration_seconds=target_duration,
