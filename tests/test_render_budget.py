@@ -68,10 +68,10 @@ def test_apply_budget_clamps_common_video_inputs_and_preserves_source():
     budget = recommend_render_budget(total_ram_gb=8, backend="mps").to_dict()
     compiled, report = apply_budget_to_graph(graph, budget)
     assert compiled["1"]["inputs"]["width"] == 768
-    assert compiled["1"]["inputs"]["height"] == 768
+    assert compiled["1"]["inputs"]["height"] == 448
     assert compiled["1"]["inputs"]["batch_size"] == 1
     assert compiled["2"]["inputs"]["length"] == 25
-    assert len(report["adjustments"]) == 3
+    assert len(report["adjustments"]) == 4
     assert graph["1"]["inputs"]["width"] == 1344
 
 
