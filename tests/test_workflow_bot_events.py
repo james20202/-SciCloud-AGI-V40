@@ -39,6 +39,7 @@ def test_workflow_engine_emits_task_lifecycle_events_after_persisting(tmp_path):
     }
     persisted = engine.load("WF-BOT-1")
     assert persisted["tasks"][0]["status"] == "done"
+    assert engine.last_event_result == {"success": True}
 
 
 def test_event_sink_failure_does_not_undo_saved_workflow_state(tmp_path):
@@ -61,3 +62,20 @@ def test_event_sink_failure_does_not_undo_saved_workflow_state(tmp_path):
 
     assert engine.load("WF-BOT-2")["tasks"][0]["status"] == "running"
     assert "event store unavailable" in engine.last_event_error
+
+
+def test_event_sink_result_is_available_for_ui_status(tmp_path):
+    class StatusSink:
+        def publish(self, event_type, payload, **kwargs):
+            return {"success": False, "message": "approval required", "event_type": event_type}
+
+    engine = WorkflowEngine(project_dir=str(tmp_path), event_publisher=StatusSink())
+    workflow = {
+        "workflow_id": "WF-BOT-3", "plan_id": "PLAN-BOT-3",
+        "status": "ready", "paused": False, "tasks": [],
+    }
+    engine.save(workflow)
+    engine._emit("workflow.ready", workflow)
+
+    assert engine.last_event_result["success"] is False
+    assert engine.last_event_result["message"] == "approval required"
