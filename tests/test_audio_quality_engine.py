@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from core.media_quality_engine import MediaQualityEngine
 
 
@@ -70,3 +72,37 @@ def test_qc_engine_routes_audio_outputs_to_audio_inspector(tmp_path, monkeypatch
     assert report["success"] is False
     assert report["checks"][0]["media_quality"] == expected
     assert "音频技术质检未通过" in report["checks"][0]["message"]
+
+
+@pytest.mark.parametrize("duration", ["NaN", "Infinity", "-Infinity"])
+def test_audio_inspection_rejects_non_finite_duration(tmp_path, duration):
+    audio = tmp_path / "dialogue.wav"
+    audio.write_bytes(b"fixture")
+
+    def runner(command, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "format": {"duration": duration},
+            "streams": [{"codec_type": "audio", "codec_name": "pcm_s16le"}],
+        }), stderr="")
+
+    result = MediaQualityEngine(runner=runner, which=lambda _: True).inspect_audio(str(audio))
+    assert result["passed"] is False
+    assert "invalid_duration" in result["errors"]
+
+
+@pytest.mark.parametrize("expected_duration", [float("nan"), float("inf"), float("-inf")])
+def test_audio_inspection_rejects_non_finite_expected_duration(tmp_path, expected_duration):
+    audio = tmp_path / "dialogue.wav"
+    audio.write_bytes(b"fixture")
+
+    def runner(command, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "format": {"duration": "2.5"},
+            "streams": [{"codec_type": "audio", "codec_name": "pcm_s16le"}],
+        }), stderr="")
+
+    result = MediaQualityEngine(runner=runner, which=lambda _: True).inspect_audio(
+        str(audio), expected_duration
+    )
+    assert result["passed"] is False
+    assert "invalid_expected_duration" in result["errors"]
