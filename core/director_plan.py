@@ -17,12 +17,23 @@ class DirectorPlanEngine:
 
     def create_plan(self, idea, title=None, duration=60, ratio="9:16"):
         idea = (idea or "").strip()
+        if not idea:
+            raise ValueError("请先填写剧情创意")
+        try:
+            duration_value = float(duration)
+        except (TypeError, ValueError):
+            raise ValueError("目标时长必须是有效数字")
+        if not 1 <= duration_value <= 3600:
+            raise ValueError("目标时长必须在 1 到 3600 秒之间")
+        if ratio not in {"9:16", "16:9", "1:1"}:
+            raise ValueError("画幅仅支持 9:16、16:9 或 1:1")
+        duration = int(round(duration_value))
         title = title or self._make_title(idea)
         genre = self._pick(idea, ["中式恐怖","修仙","玄幻","悬疑","推理","灵异","僵尸","科幻","都市情感","都市逆袭"], "原创短剧")
         hook = self._make_hook(idea, genre)
         characters = self._characters(idea, genre)
         scenes = self._scenes(idea, genre)
-        shots = self._shots(duration, characters, scenes, idea)
+        shots = self._shots(duration, characters, scenes, idea, ratio)
         tasks = self._tasks()
         plan = {
             "plan_id": "PLAN-" + uuid4().hex[:8].upper(),
@@ -72,7 +83,7 @@ class DirectorPlanEngine:
             {"id":"SCENE-00003","name":"悬念结尾空间","purpose":"留下下一集钩子","status":"planned"}
         ]
 
-    def _shots(self, duration, chars, scenes, idea):
+    def _shots(self, duration, chars, scenes, idea, ratio="9:16"):
         # Keep the shot plan reasonably paced and make its duration sum exact
         # to one decimal place, including durations that do not divide evenly.
         duration = max(1.0, float(duration))
@@ -88,7 +99,7 @@ class DirectorPlanEngine:
                 "id": f"SHOT-{i+1:04d}", "index": i+1,
                 "duration": shot_tenths / 10, "scene_id": scene_id,
                 "type": labels[i] if i < len(labels) else "补充镜头",
-                "visual_prompt": f"{idea.strip()}；镜头{i+1}，电影级构图，9:16竖屏，画面连续且人物一致",
+                "visual_prompt": f"{idea.strip()}；镜头{i+1}，电影级构图，{ratio}画幅，画面连续且人物一致",
                 "action": "推动剧情并强化镜头信息",
                 "dialogue": "", "director_note": "",
                 "prompt_status": "pending", "status": "planned"
