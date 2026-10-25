@@ -83,7 +83,7 @@ def test_timeline_normalizes_nonfinite_duration_and_rejects_nonstandard_json():
         json.loads(raw, parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
 
 
-def test_timeline_uses_zero_when_value_and_fallback_are_nonfinite():
+def test_timeline_uses_safe_default_when_all_duration_fields_are_nonfinite():
     with tempfile.TemporaryDirectory() as root:
         clip = os.path.join(root, "shot.mp4")
         with open(clip, "wb") as stream:
@@ -94,4 +94,4 @@ def test_timeline_uses_zero_when_value_and_fallback_are_nonfinite():
             [{"shot_id": "S1", "path": clip, "duration_seconds": math.inf,
               "spec": {"duration_seconds": math.nan, "duration": math.inf}}], out
         )
-        assert result["timeline"]["duration_seconds"] == 0
+        assert result["timeline"]["duration_seconds"] == 5
