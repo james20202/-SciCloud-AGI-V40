@@ -12,9 +12,10 @@ from core.qc_engine import qc_engine
 from core.motion_graphics_engine import motion_graphics_engine
 from core.shot_contract import normalize_shot, build_shot_manifest
 from core.audio_timeline import build_audio_timeline, render_srt
+from core.episode_package import build_episode_package
 
 ADAPTERS={'ffmpeg':FFmpegAdapter(),'comfyui':ComfyUIAdapter(),'tts_command':TTSCommandAdapter()}
-TASK_TO_SKILL={'story':'SKILL-STORY','character':'SKILL-STORY','scene':'SKILL-STORY','storyboard':'SKILL-STORY','prompt':'SKILL-PROMPT','image':'SKILL-IMAGE','video':'SKILL-VIDEO','voice':'SKILL-TTS','sound':'SKILL-SOUND','edit':'SKILL-EDIT','qc':'SKILL-QC','title_card':'SKILL-EDIT','motion_graphics':'SKILL-EDIT'}
+TASK_TO_SKILL={'story':'SKILL-STORY','character':'SKILL-STORY','scene':'SKILL-STORY','storyboard':'SKILL-STORY','prompt':'SKILL-PROMPT','image':'SKILL-IMAGE','video':'SKILL-VIDEO','voice':'SKILL-TTS','sound':'SKILL-SOUND','edit':'SKILL-EDIT','qc':'SKILL-QC','title_card':'SKILL-EDIT','motion_graphics':'SKILL-EDIT','publish':'SKILL-EDIT'}
 
 class ExecutionEngine:
     def __init__(self): self.last_result=None
@@ -112,6 +113,31 @@ class ExecutionEngine:
                 registered=asset_manager.register_execution(task,[actual_path],project_id=wf.get('plan_id'),data=payload)
                 workflow_engine.complete_task(wid,task_id)
                 result={'success':True,'message':'动效标题卡已生成并登记为媒体资产','outputs':[actual_path],'assets':registered,'data':payload}
+            except Exception as exc:
+                try:
+                    workflow_engine.fail_task(wid,task_id,str(exc))
+                except Exception:
+                    pass
+                result={'success':False,'message':str(exc),'task_id':task_id,'workflow_id':wid,'outputs':[]}
+            self.last_result=result
+            return result
+        if task.get('type') == 'publish':
+            blocked=self._start_or_reject(wid,task_id)
+            if blocked:
+                return blocked
+            try:
+                safe_wid=re.sub(r'[^A-Za-z0-9_-]+','_',str(wid)).strip('_') or 'workflow'
+                output_dir=os.path.join(PROJECT_DIR,'output','packages')
+                output_path=os.path.join(output_dir,f'{safe_wid}_episode_package.zip')
+                package=build_episode_package(wf,output_path)
+                current=workflow_engine.load(wid)
+                publish_task=next(t for t in current['tasks'] if t['id']==task_id)
+                publish_task['outputs']=[package['output_path']]
+                publish_task['result']={key:value for key,value in package.items() if key != 'manifest'}
+                workflow_engine.save(current)
+                registered=asset_manager.register_execution(publish_task,[package['output_path']],project_id=wf.get('plan_id'),data=publish_task['result'])
+                workflow_engine.complete_task(wid,task_id)
+                result={'success':True,'message':f"剧集交付包已生成（{package['file_count']} 个源文件，{package['subtitle_drafts']} 份字幕草稿）",'outputs':[package['output_path']],'assets':registered,'data':publish_task['result']}
             except Exception as exc:
                 try:
                     workflow_engine.fail_task(wid,task_id,str(exc))
