@@ -49,3 +49,12 @@ The WorkflowEngine can receive an optional event publisher and emits lifecycle e
 ## Limitations
 
 This is an architectural foundation, not yet a production-grade durable queue. JSONL handler checkpoints reduce duplicate work on retry, but a crash between a handler's external side effect and its completion checkpoint can still repeat that side effect. The log is not fsync-backed, multi-process writes are not coordinated, event delivery and workflow persistence are not atomic, and there is no general background replay worker. Those require explicit follow-up work and tests.
+
+
+## Workflow execution contract hardening
+
+- The `storyboard` task now verifies the workflow-linked storyboard and records its actual path and shot count instead of writing only a generic execution log.
+- The `prompt` task calls the storyboard prompt builder for each shot and saves the generated prompt records as a local JSON artifact; a missing/empty storyboard or empty prompt fails the task with an explicit error.
+- The `story` task saves the plan's actual story outline and intent as a script artifact.
+- Media task types (`image`, `video`, `voice`, `sound`, `edit`) are not marked complete merely because an adapter returned success: at least one non-empty output file must exist. Missing output fails the task and no empty asset registration is attempted.
+- Execution JSON artifacts use sanitized workflow/task/kind path components and atomic writes to avoid path traversal and truncated JSON files after interruption.
