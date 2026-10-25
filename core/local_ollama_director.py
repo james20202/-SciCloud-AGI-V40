@@ -43,6 +43,7 @@ class LocalOllamaDirector:
                 'idea':plan.get('idea',''),
                 'genre':plan.get('intent',{}).get('genre','原创短剧'),
                 'target_duration_seconds':plan.get('intent',{}).get('duration_seconds',60),
+                'aspect_ratio':plan.get('intent',{}).get('aspect_ratio','9:16'),
                 'logline':plan.get('story',{}).get('logline',''),
                 'hook':plan.get('intent',{}).get('hook',''),
                 'characters':[{'id':x.get('id'),'name':x.get('name'),'description':x.get('description','')} for x in plan.get('characters',[])],
@@ -53,7 +54,7 @@ class LocalOllamaDirector:
                 '你是中文短剧的专业编剧和分镜导演。基于输入内容优化创意文本，保持故事因果、人物一致性、场景连续性。'
                 '只输出符合给定 JSON schema 的 JSON，不要 Markdown，不要输出其他文字。'
                 '不要输出或修改任何 ID 和时长。shot_items 必须与输入 shots 数量完全相同并按原顺序对应。'
-                '每个 visual_prompt 要可直接用于图像生成，包含主体、动作、环境、光线、构图和风格；'
+                '每个 visual_prompt 要可直接用于图像生成，包含主体、动作、环境、光线、构图和风格，并严格遵循输入 aspect_ratio；'
                 'dialogue 要短且自然，无对白时可为空字符串。'
                 'JSON schema: {"logline":string,"hook":string,"characters":[{"id":string,"description":string}],"scenes":[{"id":string,"purpose":string}],"shot_items":[{"id":string,"visual_prompt":string,"action":string,"dialogue":string,"director_note":string}]}\n'
                 'INPUT='+json.dumps(payload,ensure_ascii=False)
