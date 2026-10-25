@@ -79,6 +79,18 @@ class QCEngine:
                     reported=timing.get('actual_duration_seconds') if isinstance(timing,dict) else None
                     if reported is not None and abs(float(reported)-measured)>0.05:
                         raise ValueError('timing_summary 与镜头时长合计不一致')
+                    target_duration=timing.get('target_duration_seconds') if isinstance(timing,dict) else None
+                    if target_duration is not None:
+                        target_duration=float(target_duration)
+                        if not __import__('math').isfinite(target_duration) or target_duration <= 0:
+                            raise ValueError('目标时长必须是大于 0 的有限数值')
+                        allowed_delta=max(1.0,target_duration*0.02)
+                        delta=measured-target_duration
+                        if abs(delta)>allowed_delta:
+                            raise ValueError(
+                                f'镜头总时长 {measured:g}s 与目标 {target_duration:g}s 不匹配，'
+                                f'相差 {delta:+g}s，允许误差 ±{allowed_delta:g}s'
+                            )
                     audio_timeline=payload.get('audio_timeline')
                     if audio_timeline is not None:
                         if not isinstance(audio_timeline,dict):
