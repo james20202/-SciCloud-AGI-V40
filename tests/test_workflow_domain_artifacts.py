@@ -195,3 +195,20 @@ def test_media_task_completes_when_adapter_output_is_a_nonempty_file(monkeypatch
     assert result["success"] is True
     assert result["outputs"] == [str(media_path)]
     assert workflow["tasks"][0]["status"] == "done"
+
+
+
+def test_artifact_paths_are_sanitized_and_json_writes_are_valid(monkeypatch, tmp_path):
+    engine, _ = setup_engine(monkeypatch, tmp_path, "storyboard")
+
+    path = engine._artifact(
+        {"workflow_id": "../../outside"},
+        {"id": "../../escape"},
+        "prompt/../artifact",
+        {"safe": True},
+    )
+
+    execution_root = (tmp_path / "execution").resolve()
+    assert os.path.commonpath([str(execution_root), os.path.abspath(path)]) == str(execution_root)
+    with open(path, encoding="utf-8") as f:
+        assert json.load(f) == {"safe": True}
