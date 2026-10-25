@@ -72,11 +72,11 @@ class QCEngine:
                 continue
             for dependency_type in task.get('depends_on', []):
                 prerequisites=[candidate for candidate in tasks if candidate.get('type') == dependency_type]
-                if prerequisites and not all(candidate.get('status') == STATUS_DONE for candidate in prerequisites):
+                if not prerequisites or not all(candidate.get('status') == STATUS_DONE for candidate in prerequisites):
                     return {
                         'success':False,
                         'code':'DEPENDENCY_INCOMPLETE',
-                        'message':f"任务 {task.get('id')} 已标记完成，但依赖阶段 {dependency_type} 尚未全部完成",
+                        'message':f"任务 {task.get('id')} 已标记完成，但依赖阶段 {dependency_type} 缺失或尚未全部完成",
                         'task_id':task.get('id'),
                     }
         return {'success':True,'code':'STRUCTURE_OK','message':'任务 ID、分镜关联和阶段依赖结构有效'}
