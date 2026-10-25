@@ -88,12 +88,24 @@ class AssetManager:
 
     def register_execution(self, task, outputs, project_id=None, data=None):
         created = []
-        for path in outputs or []:
-            if isinstance(path, str) and os.path.isfile(path):
-                created.append(self.register_result_file(path, asset_type=task.get('type','result'),
-                                                         project_id=project_id,
-                                                         metadata={'task_id': task.get('id'), 'data': data or {}}))
-        return [x for x in created if x]
+        for output in outputs or []:
+            # Adapters may return either a path string or a structured output record.
+            path = output.get('path') if isinstance(output, dict) else output
+            if isinstance(path, str) and os.path.isfile(path) and os.path.getsize(path) > 0:
+                metadata = {'task_id': task.get('id'), 'data': data or {}}
+                if isinstance(output, dict):
+                    metadata['output_metadata'] = {
+                        key: value for key, value in output.items() if key != 'path'
+                    }
+                asset = self.register_result_file(
+                    path,
+                    asset_type=task.get('type', 'result'),
+                    project_id=project_id,
+                    metadata=metadata,
+                )
+                if asset:
+                    created.append(asset)
+        return created
 
     def stats(self):
         assets = self._load()
