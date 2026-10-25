@@ -30,6 +30,12 @@ def build_audio_timeline(shots: Iterable[dict[str, Any]]) -> dict[str, Any]:
         end = round(cursor + duration, 3)
         dialogue = shot.get("dialogue", "")
         voiceover = shot.get("voiceover", "")
+        # Normalize optional text defensively so malformed upstream payloads do not
+        # crash an otherwise valid timeline build.
+        if not isinstance(dialogue, str):
+            dialogue = ""
+        if not isinstance(voiceover, str):
+            voiceover = ""
         segments.append({
             "shot_id": shot["shot_id"],
             "start_seconds": start,
