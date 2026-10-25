@@ -5,6 +5,7 @@ Pure validation logic: no model calls, media downloads, or filesystem writes.
 from __future__ import annotations
 
 from typing import Any
+import math
 
 
 def validate_episode_timeline(timeline: dict[str, Any], expected_duration: float,
@@ -16,6 +17,9 @@ def validate_episode_timeline(timeline: dict[str, Any], expected_duration: float
     try:
         target = float(expected_duration)
     except (TypeError, ValueError):
+        target = 0.0
+    if not math.isfinite(target):
+        errors.append({"code": "invalid_target_duration", "message": "目标时长必须是有限数值"})
         target = 0.0
     if target <= 0:
         errors.append({"code": "invalid_target_duration", "message": "目标时长必须大于 0"})
@@ -45,6 +49,9 @@ def validate_episode_timeline(timeline: dict[str, Any], expected_duration: float
         except (TypeError, ValueError):
             errors.append({"code": "invalid_clip_timing", "index": index, "message": "镜头时间字段缺失或无效"})
             continue
+        if not all(math.isfinite(value) for value in (start, duration, end)):
+            errors.append({"code": "nonfinite_clip_timing", "index": index, "message": "镜头时间字段必须是有限数值"})
+            continue
         if duration <= 0:
             errors.append({"code": "nonpositive_clip_duration", "index": index, "message": "镜头时长必须大于 0"})
         if abs(start - cursor) > 0.02:
@@ -60,7 +67,7 @@ def validate_episode_timeline(timeline: dict[str, Any], expected_duration: float
         declared_duration = float(declared)
     except (TypeError, ValueError):
         declared_duration = -1.0
-    if declared_duration < 0 or abs(declared_duration - cursor) > 0.02:
+    if not math.isfinite(declared_duration) or declared_duration < 0 or abs(declared_duration - cursor) > 0.02:
         errors.append({"code": "declared_timeline_duration_mismatch",
                        "calculated_duration_seconds": round(cursor, 3),
                        "declared_duration_seconds": declared_duration,
