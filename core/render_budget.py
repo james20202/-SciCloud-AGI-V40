@@ -139,8 +139,8 @@ def apply_budget_to_graph(graph: dict[str, Any], budget: dict[str, Any]) -> tupl
                 and width > 0 and height > 0
                 and (width > budget["max_width"] or height > budget["max_height"])):
             scale = min(budget["max_width"] / width, budget["max_height"] / height)
-            new_width = max(64, int((width * scale) // 64) * 64)
-            new_height = max(64, int((height * scale) // 64) * 64)
+            new_width = max(64, int(round((width * scale) / 64)) * 64)
+            new_height = max(64, int(round((height * scale) / 64)) * 64)
             for key, old_value, new_value in (("width", width, new_width), ("height", height, new_height)):
                 if old_value != new_value:
                     report["adjustments"].append({
