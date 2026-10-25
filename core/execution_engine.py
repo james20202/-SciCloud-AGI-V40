@@ -11,6 +11,7 @@ from core.storyboard_engine import storyboard_director
 from core.qc_engine import qc_engine
 from core.motion_graphics_engine import motion_graphics_engine
 from core.shot_contract import normalize_shot, build_shot_manifest
+from core.audio_timeline import build_audio_timeline, render_srt
 
 ADAPTERS={'ffmpeg':FFmpegAdapter(),'comfyui':ComfyUIAdapter(),'tts_command':TTSCommandAdapter()}
 TASK_TO_SKILL={'story':'SKILL-STORY','character':'SKILL-STORY','scene':'SKILL-STORY','storyboard':'SKILL-STORY','prompt':'SKILL-PROMPT','image':'SKILL-IMAGE','video':'SKILL-VIDEO','voice':'SKILL-TTS','sound':'SKILL-SOUND','edit':'SKILL-EDIT','qc':'SKILL-QC','title_card':'SKILL-EDIT','motion_graphics':'SKILL-EDIT'}
@@ -187,7 +188,9 @@ class ExecutionEngine:
                         'shot_count':len(records),
                         'shot_durations_seconds':[round(float(item.get('duration',0) or 0),3) for item in records],
                     }
-                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompt_count':len(records),'timing_summary':timing_summary,'timeline_manifest':timeline,'prompts':records})
+                    audio_timeline=build_audio_timeline(records)
+                    subtitle_srt_draft=render_srt(audio_timeline)
+                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompt_count':len(records),'timing_summary':timing_summary,'timeline_manifest':timeline,'audio_timeline':audio_timeline,'subtitle_srt_draft':subtitle_srt_draft,'prompts':records})
                     payload={'storyboard_id':storyboard_id,'prompt_count':len(records),'prompts_path':path,'timing_summary':timing_summary}
                     if target_duration is not None and not timing_summary['within_target_tolerance']:
                         message=f"已生成 {len(records)} 条镜头提示词；镜头总时长 {actual_duration:g}s，与目标 {target_duration:g}s 相差 {actual_duration-target_duration:+g}s"
