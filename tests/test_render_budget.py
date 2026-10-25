@@ -87,3 +87,29 @@ def test_opt_in_auto_detected_budget_uses_real_system_ram():
 def test_task_can_opt_into_auto_detection():
     result = budget_from_task({"resource_budget": {"auto_detect": True, "requested_tier": "fast"}})
     assert result["profile"] in {"constrained", "low-memory", "mid-memory", "high-memory"}
+
+
+@pytest.mark.parametrize("ram", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_total_ram_is_rejected(ram):
+    with pytest.raises(ValueError, match="finite positive"):
+        recommend_render_budget(total_ram_gb=ram)
+
+
+@pytest.mark.parametrize("available", [float("nan"), float("inf"), -1, "bad"])
+def test_invalid_available_ram_is_rejected(available):
+    with pytest.raises(ValueError, match="available_ram_gb"):
+        recommend_render_budget(total_ram_gb=8, available_ram_gb=available)
+
+
+@pytest.mark.parametrize("model_memory", [float("nan"), float("inf"), -1, "bad"])
+def test_invalid_model_memory_is_rejected(model_memory):
+    with pytest.raises(ValueError, match="model_memory_gb"):
+        recommend_render_budget(total_ram_gb=8, model_memory_gb=model_memory)
+
+
+def test_auto_detection_includes_available_memory_pressure(monkeypatch):
+    import core.render_budget as render_budget
+
+    monkeypatch.setattr(render_budget, "_detect_available_ram_gb", lambda: 1.25)
+    budget = render_budget.detect_local_device_budget(requested_tier="fast")
+    assert any("低于 2 GiB" in warning for warning in budget.warnings)
