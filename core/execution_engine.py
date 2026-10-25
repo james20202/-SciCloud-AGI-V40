@@ -148,7 +148,14 @@ class ExecutionEngine:
         if blocked:
             return blocked
         try:
-            result=adapter.execute(model,task,{'workflow':task.get('workflow'),'command':task.get('command')})
+            context={'workflow':task.get('workflow'),'command':task.get('command')}
+            if model.get('adapter') == 'comfyui' and task.get('type') in {'image','video','voice','sound','edit'} and callable(getattr(adapter,'render',None)):
+                safe_wid=re.sub(r'[^A-Za-z0-9_-]+','_',str(wid)).strip('_') or 'workflow'
+                safe_tid=re.sub(r'[^A-Za-z0-9_-]+','_',str(task_id)).strip('_') or 'task'
+                context['output_dir']=task.get('output_dir') or os.path.join(PROJECT_DIR,'output','comfyui',safe_wid,safe_tid)
+                result=adapter.render(model,task,context)
+            else:
+                result=adapter.execute(model,task,context)
             if result is None or not hasattr(result, 'success') or not hasattr(result, 'outputs') or not callable(getattr(result, 'to_dict', None)):
                 raise RuntimeError('适配器返回了无效结果对象')
             if not isinstance(result.success, bool):
