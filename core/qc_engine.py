@@ -35,6 +35,16 @@ class QCEngine:
         if not outputs:
             return {'success':False,'code':'NO_OUTPUT','message':f"任务 {task.get('id')} 没有登记有效的产物路径列表",'task_id':task.get('id'),'checks':[]}
         checks=[]; ok=True; vision_results=[]; media_results=[]
+        expected_duration=None
+        if task.get('type') == 'edit':
+            raw_expected=task.get('expected_duration_seconds', task.get('target_duration_seconds'))
+            if raw_expected is not None:
+                try:
+                    candidate=float(raw_expected)
+                    if math.isfinite(candidate) and candidate > 0:
+                        expected_duration=candidate
+                except (TypeError, ValueError, OverflowError):
+                    expected_duration=None
         for item in outputs:
             path=item.get('path') if isinstance(item,dict) else item
             good,msg=self._file_check(path)
@@ -42,7 +52,7 @@ class QCEngine:
             ok=ok and good
             ext=os.path.splitext(path)[1].lower() if isinstance(path,str) else ''
             if good and ext in {'.mp4','.mov','.mkv','.webm','.avi','.m4v'}:
-                media_result=media_quality_engine.inspect(path)
+                media_result=media_quality_engine.inspect(path, expected_duration=expected_duration)
                 media_results.append(media_result)
                 checks[-1]['media_quality']=media_result
                 if not media_result.get('passed'):
@@ -50,7 +60,7 @@ class QCEngine:
                     checks[-1]['message']='媒体技术质检未通过：'+str(media_result.get('message') or ', '.join(media_result.get('errors') or []))
                     ok=False
             elif good and ext in {'.mp3','.wav','.m4a','.aac','.flac','.ogg','.opus'}:
-                media_result=media_quality_engine.inspect_audio(path)
+                media_result=media_quality_engine.inspect_audio(path, expected_duration=expected_duration)
                 media_results.append(media_result)
                 checks[-1]['media_quality']=media_result
                 if not media_result.get('passed'):
