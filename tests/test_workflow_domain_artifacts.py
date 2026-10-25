@@ -125,6 +125,12 @@ def test_prompt_task_generates_one_prompt_per_storyboard_shot(monkeypatch, tmp_p
     assert result["data"]["prompt_count"] == 2
     payload = json.loads(open(result["outputs"][0], encoding="utf-8").read())
     assert [x["prompt"] for x in payload["prompts"]] == ["镜头 1 的提示词", "镜头 2 的提示词"]
+    assert [x["shot_id"] for x in payload["prompts"]] == ["S1", "S2"]
+    assert [x["duration"] for x in payload["prompts"]] == [4, 6]
+    assert payload["prompts"][0]["visual_prompt"] == "青色剑光"
+    assert payload["prompts"][0]["dialogue"] == "接招"
+    assert payload["prompts"][0]["character_ids"] == ["CHAR-1"]
+    assert payload["prompts"][1]["voiceover"] == "大劫将至"
     assert workflow["tasks"][0]["status"] == "done"
 
 
