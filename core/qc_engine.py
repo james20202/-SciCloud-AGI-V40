@@ -59,7 +59,18 @@ class QCEngine:
                     reported=timing.get('actual_duration_seconds') if isinstance(timing,dict) else None
                     if reported is not None and abs(float(reported)-measured)>0.05:
                         raise ValueError('timing_summary 与镜头时长合计不一致')
-                    contract_checks.append({'path':path,'success':True,'shot_count':len(canonical),'duration_seconds':measured})
+                    audio_timeline=payload.get('audio_timeline')
+                    if audio_timeline is not None:
+                        if not isinstance(audio_timeline,dict):
+                            raise ValueError('audio_timeline 必须是对象')
+                        audio_total=float(audio_timeline.get('total_duration_seconds'))
+                        if abs(audio_total-measured)>0.05:
+                            raise ValueError('audio_timeline 与镜头时长合计不一致')
+                        if audio_timeline.get('shot_count') != len(canonical):
+                            raise ValueError('audio_timeline 镜头数量与 prompts 不一致')
+                        if not isinstance(payload.get('subtitle_srt_draft',''),str):
+                            raise ValueError('subtitle_srt_draft 必须是字符串')
+                    contract_checks.append({'path':path,'success':True,'shot_count':len(canonical),'duration_seconds':measured,'audio_timeline_checked':audio_timeline is not None})
                 except Exception as exc:
                     ok=False
                     contract_checks.append({'path':path,'success':False,'message':f'镜头生产契约检查失败：{exc}'})
