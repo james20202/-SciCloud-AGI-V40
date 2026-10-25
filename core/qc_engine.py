@@ -2,9 +2,11 @@ import json, os
 from datetime import datetime
 from core.workflow_engine import workflow_engine, STATUS_DONE
 from core.vision_qc import vision_qc
+from core.media_quality_engine import media_quality_engine
 
 MEDIA_EXT={'.mp4','.mov','.mkv','.webm','.avi','.m4v','.mp3','.wav','.m4a','.aac','.flac','.png','.jpg','.jpeg','.webp'}
 JSON_TASKS={'story','character','scene','storyboard','prompt'}
+VIDEO_EXT={'.mp4','.mov','.mkv','.webm','.avi','.m4v'}
 
 class QCEngine:
     """V40.9 deterministic production QC. Never claims visual quality without a real vision model."""
@@ -30,14 +32,23 @@ class QCEngine:
         outputs=task.get('outputs') or []
         if not outputs:
             return {'success':False,'code':'NO_OUTPUT','message':f"任务 {task.get('id')} 没有登记任何真实产物",'task_id':task.get('id'),'checks':[]}
-        checks=[]; ok=True; vision_results=[]
+        checks=[]; ok=True; vision_results=[]; media_results=[]
         for p in outputs:
-            good,msg=self._file_check(p); checks.append({'path':p,'success':good,'message':msg}); ok=ok and good
-            if good and os.path.splitext(p)[1].lower() in MEDIA_EXT and os.path.splitext(p)[1].lower() in {'.png','.jpg','.jpeg','.webp'}:
+            good,msg=self._file_check(p); check={'path':p,'success':good,'message':msg}; checks.append(check); ok=ok and good
+            ext=os.path.splitext(p)[1].lower()
+            if good and ext in VIDEO_EXT:
+                media_result=media_quality_engine.inspect(p)
+                media_results.append(media_result)
+                check['media_quality']=media_result
+                if not media_result.get('passed'):
+                    check['success']=False
+                    check['message']='媒体技术质检未通过：'+str(media_result.get('message') or ', '.join(media_result.get('errors') or []))
+                    ok=False
+            if good and ext in {'.png','.jpg','.jpeg','.webp'}:
                 vr=vision_qc.analyze(p, {'task_id':task.get('id'),'task_type':task.get('type'),'name':task.get('name','')})
                 vision_results.append(vr)
                 if vr.get('semantic_checked') and not vr.get('success'): ok=False
-        return {'success':ok,'code':'OK' if ok else 'INVALID_OUTPUT','message':'产物与视觉审核通过' if ok and vision_results and any(v.get('semantic_checked') for v in vision_results) else ('产物级检查通过（未配置视觉模型）' if ok else '发现产物或视觉异常'),'task_id':task.get('id'),'checks':checks,'vision':vision_results}
+        return {'success':ok,'code':'OK' if ok else 'INVALID_OUTPUT','message':'产物与视觉审核通过' if ok and vision_results and any(v.get('semantic_checked') for v in vision_results) else ('产物级检查通过（未配置视觉模型）' if ok else '发现产物或视觉异常'),'task_id':task.get('id'),'checks':checks,'vision':vision_results,'media_quality':media_results}
 
     def inspect_workflow(self,wid):
         wf=workflow_engine.load(wid)
