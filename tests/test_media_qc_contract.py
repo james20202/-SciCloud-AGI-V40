@@ -81,3 +81,28 @@ def test_qc_rejects_malformed_output_container_and_failed_workflow(monkeypatch):
     assert report["success"] is False
     assert report["failed_task_id"] == "VIDEO-1"
     assert "render failed" in report["message"]
+
+
+
+def test_edit_media_qc_receives_expected_episode_duration(tmp_path, monkeypatch):
+    import core.qc_engine as module
+    video = tmp_path / "episode.mp4"
+    video.write_bytes(b"video fixture")
+    calls = []
+
+    class FakeMedia:
+        def inspect(self, path, expected_duration=None):
+            calls.append((path, expected_duration))
+            return {"passed": True, "success": True, "message": "duration checked"}
+        def inspect_audio(self, path, expected_duration=None):
+            raise AssertionError("edit video should use video probe")
+
+    monkeypatch.setattr(module, "media_quality_engine", FakeMedia())
+    result = QCEngine().inspect_task({}, {
+        "id": "EDIT-TARGET",
+        "type": "edit",
+        "expected_duration_seconds": 60,
+        "outputs": [str(video)],
+    })
+    assert result["success"] is True
+    assert calls == [(str(video), 60.0)]
