@@ -142,3 +142,17 @@ def test_completed_handler_checkpoint_survives_restart(tmp_path):
 
     assert result["success"] is True
     assert calls == {"done": 1, "retry": 2}
+
+
+def test_unhandled_event_id_keeps_original_content_identity(tmp_path):
+    runtime = BotRuntime(str(tmp_path / "bot-events.jsonl"))
+    first = runtime.publish("later.handled", {"value": 1}, event_id="evt-unhandled")
+    assert first["success"] is False
+
+    seen = []
+    runtime.subscribe("later.handled", lambda event: seen.append(event["payload"]["value"]), handler_id="handler")
+    conflict = runtime.publish("later.handled", {"value": 2}, event_id="evt-unhandled")
+
+    assert conflict["success"] is False
+    assert "拒绝复用" in conflict["message"]
+    assert seen == []
