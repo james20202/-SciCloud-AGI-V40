@@ -122,9 +122,29 @@ class ExecutionEngine:
                             'character_ids':shot.get('character_ids',[]),
                         })
                         records.append(record)
-                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompt_count':len(records),'prompts':records})
-                    payload={'storyboard_id':storyboard_id,'prompt_count':len(records),'prompts_path':path}
-                    message=f"已生成 {len(records)} 条镜头提示词"
+                    # Timing is an explicit production contract: downstream video/edit
+                    # stages need both the sum of shot durations and the plan target.
+                    actual_duration=round(sum(float(item.get('duration',0) or 0) for item in records),3)
+                    intent=plan.get('intent',{}) if isinstance(plan,dict) else {}
+                    target_raw=intent.get('duration_seconds', intent.get('target_duration_seconds')) if isinstance(intent,dict) else None
+                    try:
+                        target_duration=round(float(target_raw),3) if target_raw is not None else None
+                    except (TypeError,ValueError):
+                        target_duration=None
+                    timing_summary={
+                        'target_duration_seconds':target_duration,
+                        'actual_duration_seconds':actual_duration,
+                        'delta_seconds':round(actual_duration-target_duration,3) if target_duration is not None else None,
+                        'within_target_tolerance':abs(actual_duration-target_duration)<=max(1.0,target_duration*0.02) if target_duration is not None else None,
+                        'shot_count':len(records),
+                        'shot_durations_seconds':[round(float(item.get('duration',0) or 0),3) for item in records],
+                    }
+                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompt_count':len(records),'timing_summary':timing_summary,'prompts':records})
+                    payload={'storyboard_id':storyboard_id,'prompt_count':len(records),'prompts_path':path,'timing_summary':timing_summary}
+                    if target_duration is not None and not timing_summary['within_target_tolerance']:
+                        message=f"已生成 {len(records)} 条镜头提示词；镜头总时长 {actual_duration:g}s，与目标 {target_duration:g}s 相差 {actual_duration-target_duration:+g}s"
+                    else:
+                        message=f"已生成 {len(records)} 条镜头提示词（总时长 {actual_duration:g}s）"
                 else:
                     if task.get('type') == 'story':
                         domain_data={'plan_id':plan['plan_id'],'title':plan.get('title'),'idea':plan.get('idea'),'story':plan.get('story',{}),'intent':plan.get('intent',{}),'source':'director_plan'}
