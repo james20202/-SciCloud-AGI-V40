@@ -145,8 +145,8 @@ class ExecutionEngine:
         adapter=ADAPTERS.get(model.get('adapter'))
         if not adapter: return {'success':False,'message':f"未注册适配器：{model.get('adapter')}"}
         blocked=self._start_or_reject(wid,task_id)
-            if blocked:
-                return blocked
+        if blocked:
+            return blocked
         result=adapter.execute(model,task,{'workflow':task.get('workflow'),'command':task.get('command')})
         raw_outputs=list(result.outputs or [])
         valid_outputs=[]
