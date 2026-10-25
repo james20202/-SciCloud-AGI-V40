@@ -1,4 +1,4 @@
-import json, os
+import json, math, os
 from datetime import datetime
 from uuid import uuid4
 from core.config import PROJECT_DIR
@@ -24,14 +24,32 @@ class StoryboardDirector:
     def _path(self, storyboard_id): return os.path.join(self.directory, storyboard_id + '.json')
 
     def create_from_plan(self, plan):
+        if not isinstance(plan, dict):
+            raise ValueError('导演计划必须是对象')
+        raw_shots = plan.get('shots', [])
+        if not isinstance(raw_shots, list) or not raw_shots:
+            raise ValueError('导演计划缺少有效镜头列表')
+        # Validate all durations before constructing or persisting a storyboard.
+        # This prevents NaN/Infinity from leaking into JSON and downstream timelines.
+        normalized_durations = []
+        for index, raw in enumerate(raw_shots, 1):
+            if not isinstance(raw, dict):
+                raise ValueError(f'第 {index} 个镜头必须是对象')
+            try:
+                duration = float(raw.get('duration', raw.get('duration_seconds', 5.0)))
+            except (TypeError, ValueError, OverflowError):
+                raise ValueError(f'第 {index} 个镜头时长无效')
+            if not math.isfinite(duration) or duration <= 0:
+                raise ValueError(f'第 {index} 个镜头时长必须是有限的正数')
+            normalized_durations.append(duration)
         shots=[]
         characters=plan.get('characters',[]); scenes=plan.get('scenes',[])
-        for i, raw in enumerate(plan.get('shots', [])):
+        for i, raw in enumerate(raw_shots):
             scene_id=raw.get('scene_id') or (scenes[min(i//3,len(scenes)-1)]['id'] if scenes else '')
             char_ids=[c['id'] for c in characters[:1]] if characters else []
             shot={
                 'id': raw.get('id') or f'SHOT-{i+1:04d}', 'index': i+1,
-                'duration': raw.get('duration', 5.0), 'type': raw.get('type', self.SHOT_TYPES[i%len(self.SHOT_TYPES)]),
+                'duration': normalized_durations[i], 'type': raw.get('type', self.SHOT_TYPES[i%len(self.SHOT_TYPES)]),
                 'scene_id': scene_id, 'character_ids': char_ids,
                 'shot_size': self.SHOT_SIZES[min(i, len(self.SHOT_SIZES)-1)],
                 'camera_angle': self.CAMERA_ANGLES[i % len(self.CAMERA_ANGLES)],
@@ -57,7 +75,7 @@ class StoryboardDirector:
 
     def save(self, storyboard):
         storyboard=dict(storyboard); storyboard['updated_at']=datetime.now().isoformat(timespec='seconds')
-        with open(self._path(storyboard['storyboard_id']),'w',encoding='utf-8') as f: json.dump(storyboard,f,ensure_ascii=False,indent=2)
+        with open(self._path(storyboard['storyboard_id']),'w',encoding='utf-8') as f: json.dump(storyboard,f,ensure_ascii=False,indent=2,allow_nan=False)
         return storyboard
 
     def load(self, storyboard_id):
