@@ -22,7 +22,19 @@ class FFmpegAdapter(BaseAdapter):
         try:
             p=subprocess.run(command, capture_output=True, text=True, timeout=int(task.get('timeout',1800)))
             if p.returncode==0:
-                return AdapterResult(True, 'FFmpeg 执行成功', data={'stdout':p.stdout[-2000:]})
+                # FFmpeg normally writes its output to the final positional argument.
+                # Only report it as a production artifact after verifying a non-empty file.
+                candidate = command[-1] if len(command) > 1 else None
+                outputs = []
+                if isinstance(candidate, str) and not candidate.startswith('-') and os.path.isfile(candidate):
+                    if os.path.getsize(candidate) > 0:
+                        outputs = [os.path.abspath(candidate)]
+                return AdapterResult(
+                    True,
+                    'FFmpeg 执行成功' if outputs else 'FFmpeg 命令成功，但未发现可验证的非空输出文件。',
+                    outputs=outputs,
+                    data={'stdout':p.stdout[-2000:], 'output_verified':bool(outputs)},
+                )
             return AdapterResult(False, 'FFmpeg 执行失败', data={'stderr':p.stderr[-4000:]})
         except Exception as e:
             return AdapterResult(False, f'FFmpeg 异常：{e}')
