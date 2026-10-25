@@ -184,6 +184,7 @@ class ExecutionEngine:
                         # Bind every prompt to the source shot so downstream image/video
                         # tasks can preserve shot identity, timing, dialogue and visual intent.
                         record=dict(record)
+                        generated_prompt=record.get('prompt','')
                         record.update({
                             'shot_id':shot.get('id') or f'SHOT-{index+1:04d}',
                             'shot_index':index+1,
@@ -195,6 +196,11 @@ class ExecutionEngine:
                             'character_ids':shot.get('character_ids',[]),
                         })
                         record=normalize_shot(record,index)
+                        # Keep the model-generated production prompt distinct from the
+                        # storyboard's visual intent. Normalization aliases prompt to
+                        # visual_prompt for legacy records, so restore the generated value.
+                        if isinstance(generated_prompt,str) and generated_prompt.strip():
+                            record['prompt']=generated_prompt
                         records.append(record)
                     # Timing is an explicit production contract: downstream video/edit
                     # stages need both the sum of shot durations and the plan target.
