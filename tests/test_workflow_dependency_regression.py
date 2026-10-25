@@ -49,3 +49,44 @@ def test_stale_ready_task_is_reblocked_when_dependency_becomes_incomplete(tmp_pa
     engine._refresh_ready(workflow)
 
     assert workflow["tasks"][1]["status"] == STATUS_PENDING
+
+
+def test_edit_waits_for_title_card_when_stage_exists(tmp_path):
+    engine = WorkflowEngine(project_dir=str(tmp_path))
+    workflow = {
+        "workflow_id": "WF-TITLE-CARD-TEST",
+        "paused": False,
+        "tasks": [
+            {"id": "STORY-1", "type": "story", "status": STATUS_DONE, "depends_on": []},
+            {"id": "VIDEO-1", "type": "video", "status": STATUS_DONE, "depends_on": []},
+            {"id": "VOICE-1", "type": "voice", "status": STATUS_DONE, "depends_on": []},
+            {"id": "SOUND-1", "type": "sound", "status": STATUS_DONE, "depends_on": []},
+            {"id": "CARD-1", "type": "title_card", "status": STATUS_PENDING, "depends_on": ["story"]},
+            {"id": "EDIT-1", "type": "edit", "status": STATUS_READY, "depends_on": ["video", "sound", "voice", "title_card"]},
+        ],
+    }
+
+    engine._refresh_ready(workflow)
+
+    assert workflow["tasks"][-1]["status"] == STATUS_PENDING
+    workflow["tasks"][-2]["status"] = STATUS_DONE
+    engine._refresh_ready(workflow)
+    assert workflow["tasks"][-1]["status"] == STATUS_READY
+
+
+def test_legacy_edit_without_title_card_dependency_remains_runnable(tmp_path):
+    engine = WorkflowEngine(project_dir=str(tmp_path))
+    workflow = {
+        "workflow_id": "WF-LEGACY-EDIT-TEST",
+        "paused": False,
+        "tasks": [
+            {"id": "VIDEO-1", "type": "video", "status": STATUS_DONE, "depends_on": []},
+            {"id": "VOICE-1", "type": "voice", "status": STATUS_DONE, "depends_on": []},
+            {"id": "SOUND-1", "type": "sound", "status": STATUS_DONE, "depends_on": []},
+            {"id": "EDIT-1", "type": "edit", "status": STATUS_PENDING, "depends_on": ["video", "sound", "voice"]},
+        ],
+    }
+
+    engine._refresh_ready(workflow)
+
+    assert workflow["tasks"][-1]["status"] == STATUS_READY
