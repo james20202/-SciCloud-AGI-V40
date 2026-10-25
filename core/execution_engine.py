@@ -1,4 +1,4 @@
-import json, os
+import json, os, re, tempfile
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.model_hub import model_hub
@@ -17,9 +17,27 @@ class ExecutionEngine:
     def __init__(self): self.last_result=None
 
     def _artifact(self,wf,task,kind,data):
-        d=os.path.join(PROJECT_DIR,'execution',wf['workflow_id']); os.makedirs(d,exist_ok=True)
-        path=os.path.join(d,f"{task['id']}_{kind}.json")
-        with open(path,'w',encoding='utf-8') as f: json.dump(data,f,ensure_ascii=False,indent=2)
+        # IDs originate in plans; sanitize every path component to prevent path traversal.
+        safe_workflow=re.sub(r'[^A-Za-z0-9_-]+','_',str(wf.get('workflow_id') or 'workflow')).strip('_') or 'workflow'
+        safe_task=re.sub(r'[^A-Za-z0-9_-]+','_',str(task.get('id') or 'task')).strip('_') or 'task'
+        safe_kind=re.sub(r'[^A-Za-z0-9_-]+','_',str(kind or 'artifact')).strip('_') or 'artifact'
+        d=os.path.abspath(os.path.join(PROJECT_DIR,'execution',safe_workflow))
+        root=os.path.abspath(os.path.join(PROJECT_DIR,'execution'))
+        if os.path.commonpath([root,d]) != root:
+            raise ValueError('执行制品目录越界')
+        os.makedirs(d,exist_ok=True)
+        path=os.path.join(d,f"{safe_task}_{safe_kind}.json")
+        # Atomic replacement prevents a crash from leaving a truncated JSON artifact.
+        fd,tmp_path=tempfile.mkstemp(prefix='.artifact-',suffix='.tmp',dir=d)
+        try:
+            with os.fdopen(fd,'w',encoding='utf-8') as f:
+                json.dump(data,f,ensure_ascii=False,indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path,path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
         return path
 
     def execute(self,wid,task_id):
