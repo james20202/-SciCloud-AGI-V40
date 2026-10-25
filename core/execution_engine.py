@@ -7,6 +7,7 @@ from core.workflow_engine import workflow_engine, STATUS_DONE
 from core.adapters import FFmpegAdapter, ComfyUIAdapter, TTSCommandAdapter
 from core.asset_manager import asset_manager
 from core.director_plan import director_plan_engine
+from core.storyboard_engine import storyboard_director
 from core.qc_engine import qc_engine
 
 ADAPTERS={'ffmpeg':FFmpegAdapter(),'comfyui':ComfyUIAdapter(),'tts_command':TTSCommandAdapter()}
@@ -44,26 +45,69 @@ class ExecutionEngine:
                 workflow_engine.fail_task(wid,task_id,result.get('message','QC failed'))
             out=dict(result); out['outputs']=[path]; self.last_result=out; return out
         model=model_hub.find_for_skill(task.get('type'),task.get('model_id'))
-        # Planning / prompt tasks have a real local artifact action; media tasks require an actual adapter.
+        # Planning tasks must produce real domain artifacts, not just generic execution logs.
         if task.get('type') in {'story','character','scene','storyboard','prompt'}:
             workflow_engine.start_task(wid,task_id)
-            path=self._artifact(wf,task,'execution',{'task':task,'executed_at':datetime.now().isoformat(timespec='seconds'),'mode':'local-planning-artifact'})
-            task['outputs']=[path]
-            wf_saved=workflow_engine.load(wid)
-            next(t for t in wf_saved['tasks'] if t['id']==task_id)['outputs']=[path]
-            workflow_engine.save(wf_saved)
-            registered=[]
-            if task.get('type') in {'character','scene'}:
+            try:
                 plans=director_plan_engine.load_plans()
                 plan=next((p for p in plans if p.get('plan_id')==wf.get('plan_id')),None)
-                if plan:
+                if task.get('type') in {'story','character','scene'} and plan is None:
+                    raise RuntimeError(f"找不到导演计划：{wf.get('plan_id')}")
+
+                if task.get('type') == 'storyboard':
+                    storyboard_id=task.get('storyboard_id') or wf.get('storyboard_id')
+                    if not storyboard_id:
+                        raise RuntimeError('工作流缺少 storyboard_id，无法执行分镜任务')
+                    storyboard=storyboard_director.load(storyboard_id)
+                    if not storyboard or not storyboard.get('shots'):
+                        raise RuntimeError(f"分镜不存在或没有镜头：{storyboard_id}")
+                    path=storyboard_director._path(storyboard_id)
+                    payload={'storyboard_id':storyboard_id,'shot_count':len(storyboard['shots']),'storyboard_path':path}
+                    message=f"分镜已就绪：{len(storyboard['shots'])} 个镜头"
+                elif task.get('type') == 'prompt':
+                    storyboard_id=task.get('storyboard_id') or wf.get('storyboard_id')
+                    if not storyboard_id:
+                        raise RuntimeError('工作流缺少 storyboard_id，无法生成镜头提示词')
+                    storyboard=storyboard_director.load(storyboard_id)
+                    if not storyboard or not storyboard.get('shots'):
+                        raise RuntimeError(f"分镜不存在或没有镜头：{storyboard_id}")
+                    records=[]
+                    for index, shot in enumerate(storyboard['shots']):
+                        record=storyboard_director.build_prompt(storyboard_id,index,plan=plan,model='generic')
+                        if not record or not record.get('prompt'):
+                            raise RuntimeError(f"第 {index+1} 个镜头未能生成有效提示词")
+                        records.append(record)
+                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompts':records})
+                    payload={'storyboard_id':storyboard_id,'prompt_count':len(records),'prompts_path':path}
+                    message=f"已生成 {len(records)} 条镜头提示词"
+                else:
+                    if task.get('type') == 'story':
+                        domain_data={'plan_id':plan['plan_id'],'title':plan.get('title'),'idea':plan.get('idea'),'story':plan.get('story',{}),'intent':plan.get('intent',{}),'source':'director_plan'}
+                        kind='script'
+                    else:
+                        domain_data=None
+                        kind='execution'
+                    path=self._artifact(wf,task,kind,domain_data or {'task':task,'executed_at':datetime.now().isoformat(timespec='seconds'),'mode':'local-planning-artifact'})
+                    payload={'plan_id':plan['plan_id'],'artifact_path':path}
+                    message='剧本大纲已保存为本地制品' if task.get('type')=='story' else '本地规划任务执行完成'
+                registered=[]
+                if task.get('type') in {'character','scene'}:
                     entities=plan.get('characters' if task.get('type')=='character' else 'scenes',[])
                     for entity in entities:
-                        registered.append(asset_manager.register_plan_entity(entity, task.get('type'), wf.get('plan_id')))
-            registered += asset_manager.register_execution(task,[path],project_id=wf.get('plan_id'))
-            workflow_engine.complete_task(wid,task_id)
-            result={'success':True,'message':'本地规划任务执行完成，结果已登记到资产中心','outputs':[path],'assets':registered}
-            self.last_result=result; return result
+                        registered.append(asset_manager.register_plan_entity(entity,task.get('type'),wf.get('plan_id')))
+                registered += asset_manager.register_execution(task,[path],project_id=wf.get('plan_id'),data=payload)
+                wf_saved=workflow_engine.load(wid)
+                saved_task=next(t for t in wf_saved['tasks'] if t['id']==task_id)
+                saved_task['outputs']=[path]
+                saved_task['result']=payload
+                workflow_engine.save(wf_saved)
+                workflow_engine.complete_task(wid,task_id)
+                result={'success':True,'message':message,'outputs':[path],'assets':registered,'data':payload}
+            except Exception as exc:
+                workflow_engine.fail_task(wid,task_id,str(exc))
+                result={'success':False,'message':str(exc),'task_id':task_id,'workflow_id':wid}
+            self.last_result=result
+            return result
         if not model:
             return {'success':False,'message':f"没有可用的本地模型/适配器：{task.get('type')}。请到 Model Hub 启用。"}
         adapter=ADAPTERS.get(model.get('adapter'))
