@@ -1,3 +1,5 @@
+import math
+
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFrame,QTextEdit,QLineEdit,QComboBox,QSpinBox,QListWidget,QMessageBox
 from core.director_plan import director_plan_engine
@@ -45,10 +47,16 @@ class DirectorPlanPage(QWidget):
         if not plan['shots']:
             raise ValueError('导演计划没有生成镜头，请修改创意后重试。')
         try:
-            actual = round(sum(float(s.get('duration', 0)) for s in plan['shots']), 1)
-        except (AttributeError, TypeError, ValueError):
+            durations = [float(s.get('duration', 0)) for s in plan['shots']]
+            target_raw = float(plan['intent'].get('duration_seconds', self.duration.value()))
+        except (AttributeError, TypeError, ValueError, OverflowError):
             raise ValueError('镜头时长字段无效，请重新生成导演计划。')
-        target = round(float(plan['intent'].get('duration_seconds', self.duration.value())), 1)
+        if not all(math.isfinite(value) and value > 0 for value in durations):
+            raise ValueError('每个镜头时长都必须是有限的正数，请重新生成导演计划。')
+        if not math.isfinite(target_raw) or target_raw <= 0:
+            raise ValueError('目标总时长必须是有限的正数，请重新生成导演计划。')
+        actual = round(sum(durations), 1)
+        target = round(target_raw, 1)
         if abs(actual-target) > 0.1:
             raise ValueError(f'镜头总时长为 {actual:g} 秒，与目标 {target:g} 秒不一致；计划未进入生产队列。')
         return plan
