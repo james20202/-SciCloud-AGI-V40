@@ -1,4 +1,4 @@
-import json, os, re, tempfile
+import json, math, os, re, tempfile
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.model_hub import model_hub
@@ -128,8 +128,9 @@ class ExecutionEngine:
                     intent=plan.get('intent',{}) if isinstance(plan,dict) else {}
                     target_raw=intent.get('duration_seconds', intent.get('target_duration_seconds')) if isinstance(intent,dict) else None
                     try:
-                        target_duration=round(float(target_raw),3) if target_raw is not None else None
-                    except (TypeError,ValueError):
+                        parsed_target=float(target_raw) if target_raw is not None else None
+                        target_duration=round(parsed_target,3) if parsed_target is not None and math.isfinite(parsed_target) and parsed_target>0 else None
+                    except (TypeError,ValueError,OverflowError):
                         target_duration=None
                     timing_summary={
                         'target_duration_seconds':target_duration,
