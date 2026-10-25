@@ -108,8 +108,21 @@ class ExecutionEngine:
                         record=storyboard_director.build_prompt(storyboard_id,index,plan=plan,model='generic')
                         if not record or not record.get('prompt'):
                             raise RuntimeError(f"第 {index+1} 个镜头未能生成有效提示词")
+                        # Bind every prompt to the source shot so downstream image/video
+                        # tasks can preserve shot identity, timing, dialogue and visual intent.
+                        record=dict(record)
+                        record.update({
+                            'shot_id':shot.get('id') or f'SHOT-{index+1:04d}',
+                            'shot_index':index+1,
+                            'duration':shot.get('duration',5.0),
+                            'visual_prompt':shot.get('visual_prompt') or shot.get('prompt',''),
+                            'dialogue':shot.get('dialogue',''),
+                            'voiceover':shot.get('voiceover',''),
+                            'scene_id':shot.get('scene_id'),
+                            'character_ids':shot.get('character_ids',[]),
+                        })
                         records.append(record)
-                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompts':records})
+                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompt_count':len(records),'prompts':records})
                     payload={'storyboard_id':storyboard_id,'prompt_count':len(records),'prompts_path':path}
                     message=f"已生成 {len(records)} 条镜头提示词"
                 else:
