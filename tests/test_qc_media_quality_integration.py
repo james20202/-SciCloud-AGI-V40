@@ -117,3 +117,30 @@ def test_output_container_must_be_a_list_or_tuple():
     assert report["code"] == "INVALID_OUTPUTS"
     assert report["checks"] == []
     assert "路径列表" in report["message"]
+
+
+
+def test_workflow_qc_fails_if_any_production_task_failed(monkeypatch):
+    import core.qc_engine as module
+
+    failed_workflow = {
+        "workflow_id": "WF-FAILED",
+        "status": "failed",
+        "tasks": [
+            {"id": "TASK-STORY", "type": "story", "status": "done", "outputs": []},
+            {"id": "TASK-VIDEO", "type": "video", "name": "视频生成", "status": "failed",
+             "error": "ffmpeg exited with code 1", "outputs": []},
+        ],
+    }
+    monkeypatch.setattr(module, "workflow_engine", type(
+        "FakeWorkflowEngine", (), {"load": staticmethod(lambda workflow_id: failed_workflow)}
+    )())
+
+    engine = QCEngine()
+    report = engine.inspect_workflow("WF-FAILED")
+
+    assert report["success"] is False
+    assert report["failed_task_id"] == "TASK-VIDEO"
+    assert report["failed_task_type"] == "video"
+    assert "ffmpeg exited with code 1" in report["message"]
+    assert engine.last_result is report
