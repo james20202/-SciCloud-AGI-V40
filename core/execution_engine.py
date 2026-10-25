@@ -149,8 +149,12 @@ class ExecutionEngine:
             return blocked
         try:
             result=adapter.execute(model,task,{'workflow':task.get('workflow'),'command':task.get('command')})
-            if result is None or not hasattr(result, 'success') or not hasattr(result, 'outputs'):
+            if result is None or not hasattr(result, 'success') or not hasattr(result, 'outputs') or not callable(getattr(result, 'to_dict', None)):
                 raise RuntimeError('适配器返回了无效结果对象')
+            if not isinstance(result.success, bool):
+                raise RuntimeError('适配器结果 success 必须是布尔值')
+            if result.outputs is not None and not isinstance(result.outputs, (list, tuple)):
+                raise RuntimeError('适配器结果 outputs 必须是列表')
             raw_outputs=list(result.outputs or [])
         except Exception as exc:
             message=f'适配器执行异常：{exc}'
