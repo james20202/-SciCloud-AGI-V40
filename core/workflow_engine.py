@@ -90,6 +90,13 @@ class WorkflowEngine:
             task['depends_on']=dependencies
             task['started_at']=None; task['finished_at']=None; task['error']=None
             task['storyboard_id']=storyboard_id
+            if task_type == 'title_card':
+                intent=plan.get('intent',{}) if isinstance(plan.get('intent'),dict) else {}
+                task.setdefault('title',plan.get('title') or '章节标题')
+                task.setdefault('subtitle','片头')
+                task.setdefault('duration_seconds',2.0)
+                task.setdefault('aspect_ratio',intent.get('aspect_ratio','9:16'))
+                task.setdefault('style','xianxia')
             tasks.append(task)
         wf={'workflow_id':'WF-'+str(plan_id).replace('PLAN-',''),'plan_id':plan_id,'title':plan.get('title','未命名项目'),'storyboard_id':storyboard_id,'status':'ready','created_at':self._now(),'updated_at':self._now(),'paused':False,'tasks':tasks}
         self._refresh_ready(wf); self.save(wf); self.current=wf; self._emit('workflow.ready',wf); return wf
