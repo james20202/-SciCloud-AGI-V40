@@ -12,14 +12,35 @@ STATUS_FAILED='failed'
 
 class WorkflowEngine:
     """Persistent workflow state engine with validated plans and explicit storyboard linkage."""
-    def __init__(self, project_dir=PROJECT_DIR):
+    def __init__(self, project_dir=PROJECT_DIR, event_publisher=None):
         self.project_dir=project_dir
         self.workflow_dir=os.path.join(project_dir,'workflows')
         os.makedirs(self.workflow_dir,exist_ok=True)
         self.current=None
+        # Optional event sink keeps the engine usable in isolation and in legacy tests.
+        self.event_publisher=event_publisher
+        self.last_event_error=None
 
     def _path(self,wid): return os.path.join(self.workflow_dir,f'{wid}.json')
     def _now(self): return datetime.now().isoformat(timespec='seconds')
+
+    def _emit(self, event_type, wf, task=None):
+        if self.event_publisher is None:
+            return
+        payload={'workflow_id':wf.get('workflow_id'),'plan_id':wf.get('plan_id')}
+        if task is not None:
+            payload.update({'task_id':task.get('id'),'task_type':task.get('type'),'task_status':task.get('status')})
+        try:
+            if hasattr(self.event_publisher,'publish'):
+                result=self.event_publisher.publish(event_type,payload,source='workflow_engine')
+            else:
+                result=self.event_publisher(event_type,payload)
+            self.last_event_error=None
+            return result
+        except Exception as exc:
+            # Event reporting must not roll back an already persisted production state.
+            self.last_event_error=f'{event_type}: {exc}'
+            return None
 
     def create_from_plan(self, plan):
         if not isinstance(plan,dict): raise ValueError('导演计划必须是对象')
@@ -55,7 +76,7 @@ class WorkflowEngine:
             task['storyboard_id']=storyboard_id
             tasks.append(task)
         wf={'workflow_id':'WF-'+str(plan_id).replace('PLAN-',''),'plan_id':plan_id,'title':plan.get('title','未命名项目'),'storyboard_id':storyboard_id,'status':'ready','created_at':self._now(),'updated_at':self._now(),'paused':False,'tasks':tasks}
-        self._refresh_ready(wf); self.save(wf); self.current=wf; return wf
+        self._refresh_ready(wf); self.save(wf); self.current=wf; self._emit('workflow.ready',wf); return wf
 
     def save(self,wf):
         wf['updated_at']=self._now()
@@ -93,29 +114,29 @@ class WorkflowEngine:
         task=next((t for t in wf['tasks'] if t['id']==task_id),None)
         if not task: raise ValueError(f'任务不存在：{task_id}')
         if task['status']!=STATUS_READY: return wf
-        task['status']=STATUS_RUNNING; task['progress']=1; task['started_at']=self._now(); self._refresh_ready(wf); self.save(wf); return wf
+        task['status']=STATUS_RUNNING; task['progress']=1; task['started_at']=self._now(); self._refresh_ready(wf); self.save(wf); self._emit('task.started',wf,task); return wf
 
     def complete_task(self,wid,task_id):
         wf=self.load(wid); task=next((t for t in wf['tasks'] if t['id']==task_id),None)
         if not task: raise ValueError(f'任务不存在：{task_id}')
         if task['status'] not in (STATUS_RUNNING,STATUS_READY): return wf
-        task['status']=STATUS_DONE; task['progress']=100; task['finished_at']=self._now(); self._refresh_ready(wf); self.save(wf); return wf
+        task['status']=STATUS_DONE; task['progress']=100; task['finished_at']=self._now(); self._refresh_ready(wf); self.save(wf); self._emit('task.completed',wf,task); return wf
 
     def fail_task(self,wid,task_id,error='执行失败'):
         wf=self.load(wid); task=next((t for t in wf['tasks'] if t['id']==task_id),None)
         if not task: raise ValueError(f'任务不存在：{task_id}')
-        task['status']=STATUS_FAILED; task['error']=error; self._refresh_ready(wf); self.save(wf); return wf
+        task['status']=STATUS_FAILED; task['error']=error; self._refresh_ready(wf); self.save(wf); self._emit('task.failed',wf,task); return wf
 
     def retry_task(self,wid,task_id):
         wf=self.load(wid); task=next((t for t in wf['tasks'] if t['id']==task_id),None)
         if not task: raise ValueError(f'任务不存在：{task_id}')
         task['status']=STATUS_PENDING; task['progress']=0; task['error']=None; task['started_at']=None; task['finished_at']=None
-        self._refresh_ready(wf); self.save(wf); return wf
+        self._refresh_ready(wf); self.save(wf); self._emit('task.retried',wf,task); return wf
 
     def pause(self,wid):
-        wf=self.load(wid); wf['paused']=True; self._refresh_ready(wf); self.save(wf); return wf
+        wf=self.load(wid); wf['paused']=True; self._refresh_ready(wf); self.save(wf); self._emit('workflow.paused',wf); return wf
     def resume(self,wid):
-        wf=self.load(wid); wf['paused']=False; self._refresh_ready(wf); self.save(wf); return wf
+        wf=self.load(wid); wf['paused']=False; self._refresh_ready(wf); self.save(wf); self._emit('workflow.resumed',wf); return wf
 
     def progress(self,wf):
         total=len(wf.get('tasks',[])); return int(sum(t.get('progress',0) for t in wf.get('tasks',[]))/total) if total else 0
