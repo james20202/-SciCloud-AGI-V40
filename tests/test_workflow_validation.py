@@ -21,7 +21,8 @@ def test_workflow_links_storyboard_to_every_task(tmp_path, monkeypatch):
     assert wf["storyboard_id"] == "STORYBOARD-TEST"
     assert all(t["storyboard_id"] == "STORYBOARD-TEST" for t in wf["tasks"])
     assert next(t for t in wf["tasks"] if t["id"] == "TASK-1")["status"] == STATUS_READY
-    assert next(t for t in wf["tasks"] if t["id"] == "TASK-2")["status"] == STATUS_PENDING
+    # No character/scene tasks exist in this minimal plan, so storyboard has no unresolved upstream IDs.
+    assert next(t for t in wf["tasks"] if t["id"] == "TASK-2")["status"] == STATUS_READY
 
 
 @pytest.mark.parametrize("plan, message", [
