@@ -86,3 +86,34 @@ def test_non_video_json_outputs_do_not_call_media_quality(tmp_path, monkeypatch)
     assert report["success"] is True
     assert media.checked == []
     assert report["media_quality"] == []
+
+
+
+def test_malformed_output_paths_fail_qc_without_crashing(monkeypatch):
+    import core.qc_engine as module
+
+    media = FakeMediaQualityEngine({"success": True, "passed": True})
+    monkeypatch.setattr(module, "media_quality_engine", media)
+
+    report = QCEngine().inspect_task(
+        {"workflow_id": "WF-4"},
+        {"id": "TASK-MALFORMED", "type": "video", "outputs": [None, 123]},
+    )
+
+    assert report["success"] is False
+    assert report["code"] == "INVALID_OUTPUT"
+    assert len(report["checks"]) == 2
+    assert all(check["success"] is False for check in report["checks"])
+    assert media.checked == []
+
+
+def test_output_container_must_be_a_list_or_tuple():
+    report = QCEngine().inspect_task(
+        {"workflow_id": "WF-5"},
+        {"id": "TASK-OUTPUT-CONTAINER", "type": "storyboard", "outputs": "storyboard.json"},
+    )
+
+    assert report["success"] is False
+    assert report["code"] == "INVALID_OUTPUTS"
+    assert report["checks"] == []
+    assert "路径列表" in report["message"]
