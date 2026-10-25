@@ -36,6 +36,8 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
     seen: set[str] = set()
     subtitles: list[tuple[str, str]] = []
     qc_payloads: list[dict[str, Any]] = []
+    final_video_found = False
+    video_suffixes = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
     for task in tasks:
         if not isinstance(task, dict):
@@ -48,12 +50,21 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
                     missing.append(str(source))
                 continue
             absolute = os.path.abspath(source)
+            suffix = Path(absolute).suffix.lower()
+            if task.get("type") == "edit" and suffix in video_suffixes:
+                final_video_found = True
             if absolute in seen:
                 continue
             seen.add(absolute)
-            suffix = Path(absolute).suffix.lower()
-            folder = "media" if suffix in {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".mp3", ".wav", ".m4a", ".aac", ".flac", ".png", ".jpg", ".jpeg", ".webp"} else "artifacts"
-            archive_name = f"{folder}/{task_id}/{_safe_name(Path(absolute).name, 'artifact')}"
+            folder = "media" if suffix in video_suffixes | {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".png", ".jpg", ".jpeg", ".webp"} else "artifacts"
+            base_name = _safe_name(Path(absolute).name, "artifact")
+            archive_name = f"{folder}/{task_id}/{base_name}"
+            collision_index = 2
+            existing_names = {name for _, name in files}
+            while archive_name in existing_names:
+                stem, extension = os.path.splitext(base_name)
+                archive_name = f"{folder}/{task_id}/{stem}_{collision_index}{extension}"
+                collision_index += 1
             files.append((absolute, archive_name))
             if task.get("type") == "qc" and suffix == ".json":
                 try:
@@ -73,6 +84,8 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
                 except (OSError, ValueError):
                     pass
 
+    if not final_video_found:
+        raise ValueError("最终剪辑任务没有可用的非空最终视频文件，拒绝生成成片交付包")
     if not files:
         raise ValueError("没有可验证的非空生产制品，无法生成交付包")
 
