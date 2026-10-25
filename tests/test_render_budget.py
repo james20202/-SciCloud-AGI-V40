@@ -73,3 +73,17 @@ def test_apply_budget_clamps_common_video_inputs_and_preserves_source():
     assert compiled["2"]["inputs"]["length"] == 25
     assert len(report["adjustments"]) == 3
     assert graph["1"]["inputs"]["width"] == 1344
+
+
+def test_opt_in_auto_detected_budget_uses_real_system_ram():
+    from core.render_budget import detect_local_device_budget
+
+    budget = detect_local_device_budget(capability="video.reference2video", requested_tier="fast")
+    assert budget.profile in {"constrained", "low-memory", "mid-memory", "high-memory"}
+    assert budget.max_width > 0
+    assert budget.batch_size == 1
+
+
+def test_task_can_opt_into_auto_detection():
+    result = budget_from_task({"resource_budget": {"auto_detect": True, "requested_tier": "fast"}})
+    assert result["profile"] in {"constrained", "low-memory", "mid-memory", "high-memory"}
