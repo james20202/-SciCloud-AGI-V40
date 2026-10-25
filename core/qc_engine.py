@@ -42,8 +42,10 @@ class QCEngine:
     def _structural_check(self, wf):
         tasks=wf.get('tasks', [])
         ids=[task.get('id') for task in tasks]
-        if any(not task_id for task_id in ids) or len(set(ids)) != len(ids):
-            return {'success':False,'code':'INVALID_TASK_IDS','message':'工作流任务 ID 缺失或重复'}
+        if any(not isinstance(task_id, str) or not task_id.strip() for task_id in ids):
+            return {'success':False,'code':'INVALID_TASK_IDS','message':'工作流任务 ID 缺失或格式无效'}
+        if len(set(ids)) != len(ids):
+            return {'success':False,'code':'INVALID_TASK_IDS','message':'工作流任务 ID 重复'}
 
         workflow_storyboard_id=wf.get('storyboard_id')
         for task in tasks:
