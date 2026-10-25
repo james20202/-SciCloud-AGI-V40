@@ -176,3 +176,10 @@ python3 -m pip install -r requirements.txt
 - 新增自动化测试覆盖资产提取、重复执行、道具去重、对白/提示词保留，以及只重试失败镜头的保护规则。
 - 参考并沿用 MIT 许可的 [Comic-drama](https://github.com/tccnnd/Comic-drama) 中结构化剧本→人物/场景/镜头资产的流水线设计；V40.410 的提取器按 SciCloud 的资产登记接口独立适配。已直接复用的 Comic-drama 算法/时间线代码及完整 MIT 许可声明见 `THIRD_PARTY_NOTICES.md`。
 - 代码与测试通过 GitHub Actions 不等于已在用户 Mac 上完成完整 ComfyUI 实际渲染；本版本不安装 ComfyUI、不下载模型、不调用云端生成服务。
+
+## V40.411.0 · Episode Acceptance Gate
+
+- 新增纯本地单集时间线验收器，检查视频镜头是否存在、镜头时长是否为正、镜头起止时间是否连续、结束时间是否与起始时间及持续时间一致，以及时间线总时长是否与单集目标相符。
+- 单集 QC 现在同时核验成片媒体和 canonical timeline；缺少、损坏或与目标时长明显不符的时间线会阻止发布，并在质检结果中给出结构化错误。
+- 新增独立回归测试覆盖有效时间线、间隙/重叠、结束时间错误和空视频轨道。
+- 本版本不引入云端模型调用、模型下载或在线 Token 依赖。自动化测试通过不代表已在用户的 Mac 上完成真实 ComfyUI 渲染。
