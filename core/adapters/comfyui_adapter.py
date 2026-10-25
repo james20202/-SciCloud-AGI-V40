@@ -4,6 +4,7 @@ from urllib import request, parse
 from urllib.error import HTTPError, URLError
 from core.adapters.base import BaseAdapter, AdapterResult
 from core.character_reference_comfyui import bind_character_references
+from core.comfyui_workflow_registry import compile_workflow, WorkflowManifestError
 
 
 class ComfyUIAdapter(BaseAdapter):
@@ -32,6 +33,16 @@ class ComfyUIAdapter(BaseAdapter):
             return AdapterResult(False, f'ComfyUI 未连接：{e}')
 
     def _workflow(self, task, context):
+        manifest = task.get('workflow_manifest') or context.get('workflow_manifest')
+        if manifest is not None:
+            try:
+                return compile_workflow(
+                    manifest,
+                    params=task.get('workflow_params') or context.get('workflow_params') or {},
+                    assets=task.get('workflow_assets') or context.get('workflow_assets') or {},
+                ), None
+            except WorkflowManifestError as exc:
+                return None, f'ComfyUI 工作流清单无效：{exc}'
         workflow = task.get('workflow') or context.get('workflow')
         if isinstance(workflow, str):
             try:
