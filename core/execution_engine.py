@@ -7,6 +7,7 @@ from core.workflow_engine import workflow_engine, STATUS_DONE
 from core.adapters import FFmpegAdapter, ComfyUIAdapter, TTSCommandAdapter
 from core.asset_manager import asset_manager
 from core.director_plan import director_plan_engine
+from core.storyboard_engine import storyboard_director
 from core.qc_engine import qc_engine
 
 ADAPTERS={'ffmpeg':FFmpegAdapter(),'comfyui':ComfyUIAdapter(),'tts_command':TTSCommandAdapter()}
@@ -47,7 +48,26 @@ class ExecutionEngine:
         # Planning / prompt tasks have a real local artifact action; media tasks require an actual adapter.
         if task.get('type') in {'story','character','scene','storyboard','prompt'}:
             workflow_engine.start_task(wid,task_id)
-            path=self._artifact(wf,task,'execution',{'task':task,'executed_at':datetime.now().isoformat(timespec='seconds'),'mode':'local-planning-artifact'})
+            if task.get('type') == 'storyboard':
+                storyboard_id = task.get('storyboard_id') or wf.get('storyboard_id')
+                storyboard = storyboard_director.load(storyboard_id) if storyboard_id else None
+                if not storyboard:
+                    message = f'分镜资产不存在或无法读取：{storyboard_id or "缺少 storyboard_id"}'
+                    workflow_engine.fail_task(wid, task_id, message)
+                    return {'success': False, 'message': message}
+                storyboard_payload = {
+                    'mode': 'storyboard-production-input',
+                    'storyboard_id': storyboard_id,
+                    'plan_id': storyboard.get('plan_id') or wf.get('plan_id'),
+                    'title': storyboard.get('title') or wf.get('title'),
+                    'shot_count': len(storyboard.get('shots', [])),
+                    'duration_seconds': sum(float(shot.get('duration', shot.get('duration_seconds', 0)) or 0) for shot in storyboard.get('shots', [])),
+                    'storyboard': storyboard,
+                    'executed_at': datetime.now().isoformat(timespec='seconds'),
+                }
+                path=self._artifact(wf,task,'storyboard',storyboard_payload)
+            else:
+                path=self._artifact(wf,task,'execution',{'task':task,'executed_at':datetime.now().isoformat(timespec='seconds'),'mode':'local-planning-artifact'})
             task['outputs']=[path]
             wf_saved=workflow_engine.load(wid)
             next(t for t in wf_saved['tasks'] if t['id']==task_id)['outputs']=[path]
