@@ -17,7 +17,7 @@ Use named events such as `director.plan.requested`, `script.approved`, `storyboa
 
 The initial local runtime is intentionally small: typed-by-convention event names, JSON-safe payloads, handler subscriptions, JSONL audit records, per-handler completion checkpoints, and rejection when a previously seen event ID is reused with different content. Retries skip handlers already checkpointed as successful. It does not create a second production scheduler or run model calls itself.
 
-The WorkflowEngine can receive an optional event publisher and emits lifecycle events after state persistence (workflow.ready, task.started, task.completed, task.failed, task.retried, workflow.paused, workflow.resumed). The publisher is optional so legacy callers and isolated tests remain compatible. Event delivery failures are recorded on the engine and do not roll back saved workflow state.
+The WorkflowEngine can receive an optional event publisher and emits lifecycle events after state persistence (workflow.ready, task.started, task.completed, task.failed, task.retried, workflow.paused, workflow.resumed). It exposes the latest event result/error for a UI status surface. The desktop entry point registers the Production Bot with automatic execution disabled by default; the Bot delegates to the existing AutoDirector only when explicitly configured with auto_execute=True. Event delivery failures do not roll back saved workflow state.
 
 ## First Bot roles for SciCloud
 
@@ -41,8 +41,8 @@ The WorkflowEngine can receive an optional event publisher and emits lifecycle e
 
 1. Add event runtime and unit tests.
 2. Emit workflow lifecycle events from the existing WorkflowEngine.
-3. Subscribe Production Bot to workflow-ready events and delegate execution to the existing engines.
-4. Add QC/repair and resource preflight events.
+3. Subscribe Production Bot to workflow-ready events and delegate execution to the existing engines; the app startup registration is approval-gated by default.
+4. Surface Bot result/error and task lifecycle events in the desktop UI; then add QC/repair and resource preflight events.
 5. Add a single status feed to the UI; then optional Telegram/Discord/webhook connectors.
 6. Introduce durable queue/recovery and bounded concurrency only when needed; avoid a distributed-service stack on an 8GB local Mac.
 
