@@ -73,6 +73,7 @@ class ExecutionEngine:
             task2=workflow_engine.load(wid)
             t2=next(t for t in task2['tasks'] if t['id']==task_id)
             t2['outputs']=[path]
+            workflow_engine.save(task2)
             if result.get('success'):
                 workflow_engine.complete_task(wid,task_id)
             else:
