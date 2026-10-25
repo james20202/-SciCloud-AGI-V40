@@ -46,3 +46,15 @@ def test_director_page_rejects_malformed_shot_duration():
     with pytest.raises(ValueError, match="总时长"):
         page._validate_plan(bad)
     page.close()
+
+
+def test_director_page_rejects_nan_shot_duration():
+    page = DirectorPlanPage()
+    bad = {
+        "intent": {"duration_seconds": 60}, "story": {},
+        "characters": [], "scenes": [],
+        "shots": [{"duration": float("nan")}], "tasks": []
+    }
+    with pytest.raises(ValueError, match="时长"):
+        page._validate_plan(bad)
+    page.close()
