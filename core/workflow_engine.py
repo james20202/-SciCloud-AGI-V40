@@ -100,11 +100,29 @@ class WorkflowEngine:
         return out
 
     def _refresh_ready(self,wf):
-        done_types={t.get('type') for t in wf.get('tasks',[]) if t.get('status')==STATUS_DONE}
-        for t in wf.get('tasks',[]):
-            if t.get('status') in (STATUS_PENDING,STATUS_READY) and all(d in done_types for d in t.get('depends_on',[])):
-                t['status']=STATUS_READY
         tasks=wf.get('tasks',[])
+        # Dependencies are declared by task type for backward compatibility, but
+        # a type is satisfied only when every task in that stage is complete.
+        # Checking only whether one task of a type is done lets later stages
+        # start while sibling shots/assets are still pending.
+        for task in tasks:
+            if task.get('status') not in (STATUS_PENDING, STATUS_READY):
+                continue
+            dependencies_ready = True
+            for dependency_type in task.get('depends_on', []):
+                prerequisites = [
+                    candidate for candidate in tasks
+                    if candidate.get('type') == dependency_type
+                ]
+                # A stage omitted from a custom plan is optional; when present,
+                # all tasks in that stage must finish before this task can start.
+                if prerequisites and not all(
+                    candidate.get('status') == STATUS_DONE
+                    for candidate in prerequisites
+                ):
+                    dependencies_ready = False
+                    break
+            task['status'] = STATUS_READY if dependencies_ready else STATUS_PENDING
         if tasks and all(t.get('status')==STATUS_DONE for t in tasks): wf['status']='completed'
         elif wf.get('paused'): wf['status']='paused'
         elif any(t.get('status')==STATUS_RUNNING for t in tasks): wf['status']='running'
