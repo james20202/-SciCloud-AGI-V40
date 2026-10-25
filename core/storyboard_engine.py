@@ -31,7 +31,7 @@ class StoryboardDirector:
             char_ids=[c['id'] for c in characters[:1]] if characters else []
             shot={
                 'id': raw.get('id') or f'SHOT-{i+1:04d}', 'index': i+1,
-                'duration': raw.get('duration', 5.0), 'type': raw.get('type', self.SHOT_TYPES[i%len(self.SHOT_TYPES)]),
+                'duration': raw.get('duration_seconds', raw.get('duration', 5.0)), 'type': raw.get('type', self.SHOT_TYPES[i%len(self.SHOT_TYPES)]),
                 'scene_id': scene_id, 'character_ids': char_ids,
                 'shot_size': self.SHOT_SIZES[min(i, len(self.SHOT_SIZES)-1)],
                 'camera_angle': self.CAMERA_ANGLES[i % len(self.CAMERA_ANGLES)],
