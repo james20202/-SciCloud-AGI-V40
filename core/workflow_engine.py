@@ -73,7 +73,7 @@ class WorkflowEngine:
         deps={
             'story':[], 'character':['story'], 'scene':['story'], 'storyboard':['character','scene'],
             'prompt':['storyboard'], 'image':['prompt'], 'video':['image'], 'voice':['story'],
-            'sound':['video','voice'], 'edit':['video','sound','voice'], 'qc':['edit'], 'publish':['qc']
+            'sound':['video','voice'], 'title_card':['story'], 'edit':['video','sound','voice','title_card'], 'qc':['edit'], 'publish':['qc']
         }
         tasks=[]
         for t in raw_tasks:
@@ -81,7 +81,13 @@ class WorkflowEngine:
             task_type=task.get('type')
             if not task_type: raise ValueError(f"任务 {task['id']} 缺少 type")
             task['status']=STATUS_READY if not deps.get(task_type) else STATUS_PENDING
-            task['progress']=0; task['depends_on']=deps.get(task_type,[])
+            task['progress']=0
+            dependencies=list(deps.get(task_type,[]))
+            # The title card is an optional packaging stage for legacy/custom plans.
+            # When present, final editing waits for it; when absent, old plans remain runnable.
+            if task_type == 'edit' and not any(candidate.get('type') == 'title_card' for candidate in raw_tasks):
+                dependencies=[dependency for dependency in dependencies if dependency != 'title_card']
+            task['depends_on']=dependencies
             task['started_at']=None; task['finished_at']=None; task['error']=None
             task['storyboard_id']=storyboard_id
             tasks.append(task)
