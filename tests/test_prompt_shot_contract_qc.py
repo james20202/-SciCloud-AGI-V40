@@ -40,3 +40,34 @@ def test_prompt_qc_rejects_mismatched_reported_duration(tmp_path):
     result = QCEngine().inspect_task({}, {"id": "PROMPT-3", "type": "prompt", "outputs": [artifact]})
     assert result["success"] is False
     assert "时长合计不一致" in result["shot_contract_checks"][0]["message"]
+
+
+def test_prompt_qc_checks_optional_audio_timeline_without_breaking_legacy_artifacts(tmp_path):
+    artifact = _write(tmp_path / "prompts_with_audio.json", {
+        "prompts": [
+            {"shot_id": "S1", "duration": 2, "dialogue": "你好"},
+            {"shot_id": "S2", "duration": 3, "voiceover": "山门开启"},
+        ],
+        "timing_summary": {"actual_duration_seconds": 5},
+        "audio_timeline": {
+            "shot_count": 2,
+            "total_duration_seconds": 5,
+            "segments": [],
+            "subtitle_cues": [],
+        },
+        "subtitle_srt_draft": "1\\n00:00:00,000 --> 00:00:02,000\\n你好\\n",
+    })
+    result = QCEngine().inspect_task({}, {"id": "PROMPT-AUDIO", "type": "prompt", "outputs": [artifact]})
+    assert result["success"] is True
+    assert result["shot_contract_checks"][0]["audio_timeline_checked"] is True
+
+
+def test_prompt_qc_rejects_audio_timeline_duration_mismatch(tmp_path):
+    artifact = _write(tmp_path / "prompts_bad_audio.json", {
+        "prompts": [{"shot_id": "S1", "duration": 5}],
+        "timing_summary": {"actual_duration_seconds": 5},
+        "audio_timeline": {"shot_count": 1, "total_duration_seconds": 4},
+    })
+    result = QCEngine().inspect_task({}, {"id": "PROMPT-AUDIO-BAD", "type": "prompt", "outputs": [artifact]})
+    assert result["success"] is False
+    assert "audio_timeline 与镜头时长合计不一致" in result["shot_contract_checks"][0]["message"]
