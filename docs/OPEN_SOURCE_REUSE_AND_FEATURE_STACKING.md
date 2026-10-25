@@ -69,3 +69,18 @@ SciCloud now has a small native `core/audio_timeline.py` contract derived from t
 - no new dependency, second scheduler, database, UI framework, or model download.
 
 Tests cover timing, subtitle output, duplicate shot IDs, and overlap rejection. The next integration step is to connect this manifest to actual TTS output durations and final edit/export tasks, preserving legacy workflow JSON.
+
+
+## Episode handoff export (2026-10-26)
+
+Further review of MIT-licensed [Comic-drama](https://github.com/tccnnd/Comic-drama), [LocalMiniDrama](https://github.com/xuanyustudio/LocalMiniDrama), and [OpenManga](https://github.com/pr0h0/OpenManga) highlighted reusable production ideas: canonical timeline data, resumable local artifacts, and a complete episode handoff. SciCloud does not import their application stacks or model dependencies.
+
+Implemented natively in this repository:
+- `core/episode_package.py` creates a ZIP handoff from already-generated, non-empty workflow artifacts;
+- requires the edit and QC stages to be marked done before packaging;
+- includes media, JSON artifacts, available subtitle drafts, QC report payloads, and a manifest with SHA-256 hashes;
+- validates the ZIP after writing and atomically replaces the destination;
+- reports missing/empty outputs instead of inventing success or regenerating media;
+- `publish` tasks now call this package builder through the existing execution engine.
+
+No extra runtime dependency, model download, or new database is required. A draft subtitle is clearly marked as planned-shot timing until aligned to actual audio.
