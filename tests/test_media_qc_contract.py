@@ -49,10 +49,10 @@ def test_qc_routes_audio_and_video_to_media_quality_engine(tmp_path, monkeypatch
     audio.write_bytes(b"audio fixture")
     calls = []
     class FakeMedia:
-        def inspect(self, path):
+        def inspect(self, path, expected_duration=None):
             calls.append(("video", path))
             return {"passed": True, "success": True, "message": "video ok"}
-        def inspect_audio(self, path):
+        def inspect_audio(self, path, expected_duration=None):
             calls.append(("audio", path))
             return {"passed": False, "success": False, "message": "no audio stream", "errors": ["missing_audio_stream"]}
     monkeypatch.setattr(module, "media_quality_engine", FakeMedia())
