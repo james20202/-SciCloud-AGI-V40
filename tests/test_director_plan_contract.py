@@ -46,3 +46,23 @@ def test_director_plan_handles_non_divisible_duration_exactly(tmp_path):
     shots = engine._shots(37, [], [], "夜闯古宅", "9:16")
     assert round(sum(float(shot["duration"]) for shot in shots), 1) == 37
     assert all(shot["duration"] > 0 for shot in shots)
+
+
+
+def test_save_plan_is_atomic_and_rejects_invalid_plan_id(tmp_path):
+    import json
+    import pytest
+
+    engine = DirectorPlanEngine(project_dir=str(tmp_path))
+    with pytest.raises(ValueError, match="有效 plan_id"):
+        engine.save_plan({"title": "missing id"})
+    with pytest.raises(ValueError, match="对象"):
+        engine.save_plan([])
+
+    plan = {"plan_id": "PLAN-ATOMIC", "title": "first"}
+    path = engine.save_plan(plan)
+    plan["title"] = "second"
+    engine.save_plan(plan)
+
+    assert json.loads(open(path, encoding="utf-8").read())["title"] == "second"
+    assert not list(tmp_path.glob(".plan-*.tmp"))
