@@ -92,7 +92,7 @@ class BotRuntime:
                         continue
                     event_id = str(event_id)
                     kind = record.get("record_type")
-                    if kind == "event_received" and record.get("fingerprint"):
+                    if kind in {"event_received", "event_unhandled"} and record.get("fingerprint"):
                         self._event_fingerprints[event_id] = str(record["fingerprint"])
                     elif kind == "handler_completed" and record.get("handler_id"):
                         self._completed_handlers.setdefault(event_id, set()).add(str(record["handler_id"]))
@@ -140,7 +140,8 @@ class BotRuntime:
 
             handlers = list(self._handlers.get(event_type, ()))
             if not handlers:
-                self._append({"record_type": "event_unhandled", **event})
+                self._append({"record_type": "event_unhandled", **event, "fingerprint": fingerprint})
+                self._event_fingerprints[identifier] = fingerprint
                 return {
                     "success": False, "duplicate": False, "event_id": identifier,
                     "handled": 0, "results": [], "message": f"没有 Bot 订阅事件：{event_type}",
