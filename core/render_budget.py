@@ -4,6 +4,7 @@ This module never downloads models or changes the user's ComfyUI installation.
 from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
+import math
 
 @dataclass(frozen=True)
 class RenderBudget:
@@ -31,10 +32,22 @@ def recommend_render_budget(*, total_ram_gb: float, available_ram_gb: float | No
         ram = float(total_ram_gb)
     except (TypeError, ValueError) as exc:
         raise ValueError("total_ram_gb must be a positive number") from exc
-    if ram <= 0:
-        raise ValueError("total_ram_gb must be a positive number")
-    if available_ram_gb is not None and float(available_ram_gb) < 0:
-        raise ValueError("available_ram_gb cannot be negative")
+    if not math.isfinite(ram) or ram <= 0:
+        raise ValueError("total_ram_gb must be a finite positive number")
+    if available_ram_gb is not None:
+        try:
+            available = float(available_ram_gb)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("available_ram_gb must be a finite non-negative number") from exc
+        if not math.isfinite(available) or available < 0:
+            raise ValueError("available_ram_gb must be a finite non-negative number")
+    if model_memory_gb is not None:
+        try:
+            model_memory = float(model_memory_gb)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("model_memory_gb must be a finite non-negative number") from exc
+        if not math.isfinite(model_memory) or model_memory < 0:
+            raise ValueError("model_memory_gb must be a finite non-negative number")
     backend = str(backend or "unknown").lower()
     tier = str(requested_tier or "balanced").lower()
     if tier not in {"fast", "balanced", "quality"}:
@@ -46,7 +59,7 @@ def recommend_render_budget(*, total_ram_gb: float, available_ram_gb: float | No
         warnings.append("未确认可用 GPU 后端；扩散视频生成可能极慢或无法加载模型。")
     if available_ram_gb is not None and float(available_ram_gb) < 2:
         warnings.append("当前可用内存低于 2 GiB；建议关闭其他应用，避免换页或任务崩溃。")
-    if model_memory_gb is not None and float(model_memory_gb) > ram * 0.70:
+    if model_memory_gb is not None and model_memory > ram * 0.70:
         warnings.append("模型估算内存超过系统内存的 70%；本机直接加载风险高，优先选择更小/量化模型或外部生成节点。")
     if ram < 8:
         profile, max_w, max_h, frames = "constrained", 512, 512, 17
@@ -82,6 +95,56 @@ def recommend_render_budget(*, total_ram_gb: float, available_ram_gb: float | No
         warnings.append("低内存设备不建议整片超分；按短镜头分块处理，拼接后保留原音轨。")
     return RenderBudget(profile, tier, max_w, max_h, frames, 1, ram >= 16, tuple(dict.fromkeys(warnings)))
 
+def _detect_available_ram_gb() -> float | None:
+    """Best-effort available-memory estimate across macOS and Linux."""
+    import platform
+    import subprocess
+    import re
+
+    try:
+        import psutil
+        available = float(psutil.virtual_memory().available) / (1024 ** 3)
+        if math.isfinite(available) and available >= 0:
+            return available
+    except Exception:
+        pass
+
+    system = platform.system()
+    if system == "Linux":
+        try:
+            with open("/proc/meminfo", encoding="ascii") as stream:
+                for line in stream:
+                    if line.startswith("MemAvailable:"):
+                        return max(0.0, float(line.split()[1]) / (1024 ** 2))
+        except (OSError, ValueError, IndexError):
+            pass
+    elif system == "Darwin":
+        try:
+            result = subprocess.run(
+                ["vm_stat"], capture_output=True, text=True, timeout=2, check=False
+            )
+            if result.returncode == 0:
+                page_size = 4096
+                header = result.stdout.splitlines()[0] if result.stdout else ""
+                match = re.search(r"page size of (\d+) bytes", header)
+                if match:
+                    page_size = int(match.group(1))
+                pages = {}
+                for line in result.stdout.splitlines()[1:]:
+                    match = re.match(r"([^:]+):\s*([0-9.]+)", line)
+                    if match:
+                        pages[match.group(1).strip().lower()] = float(match.group(2).replace(".", ""))
+                reclaimable = sum(
+                    pages.get(key, 0.0)
+                    for key in ("pages free", "pages inactive", "pages speculative", "pages purgeable")
+                )
+                if reclaimable >= 0:
+                    return reclaimable * page_size / (1024 ** 3)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+    return None
+
+
 def detect_local_device_budget(**overrides: Any) -> RenderBudget:
     """Best-effort local RAM/backend detection; never downloads or installs anything."""
     import os
@@ -108,6 +171,10 @@ def detect_local_device_budget(**overrides: Any) -> RenderBudget:
     options.pop("auto_detect", None)
     options.setdefault("total_ram_gb", total_ram_gb)
     options.setdefault("backend", backend)
+    if "available_ram_gb" not in options:
+        available = _detect_available_ram_gb()
+        if available is not None:
+            options["available_ram_gb"] = available
     return recommend_render_budget(**options)
 
 
