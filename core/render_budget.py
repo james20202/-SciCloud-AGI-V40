@@ -82,12 +82,44 @@ def recommend_render_budget(*, total_ram_gb: float, available_ram_gb: float | No
         warnings.append("低内存设备不建议整片超分；按短镜头分块处理，拼接后保留原音轨。")
     return RenderBudget(profile, tier, max_w, max_h, frames, 1, ram >= 16, tuple(dict.fromkeys(warnings)))
 
+def detect_local_device_budget(**overrides: Any) -> RenderBudget:
+    """Best-effort local RAM/backend detection; never downloads or installs anything."""
+    import os
+    import platform
+    total_ram_gb = None
+    try:
+        total_ram_gb = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / (1024 ** 3)
+    except (ValueError, OSError, AttributeError):
+        pass
+    if not total_ram_gb or total_ram_gb <= 0:
+        raise ValueError("无法自动检测系统内存，请手动填写 total_ram_gb")
+    backend = "unknown"
+    try:
+        import torch
+        if getattr(torch, "cuda", None) and torch.cuda.is_available():
+            backend = "cuda"
+        elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            backend = "mps"
+        else:
+            backend = "cpu"
+    except Exception:
+        backend = "mps" if platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"} else "unknown"
+    options = dict(overrides)
+    options.pop("auto_detect", None)
+    options.setdefault("total_ram_gb", total_ram_gb)
+    options.setdefault("backend", backend)
+    return recommend_render_budget(**options)
+
+
 def budget_from_task(task: dict[str, Any]) -> dict[str, Any] | None:
-    """Build a budget only when the caller explicitly supplies device data."""
+    """Build a budget only when the caller explicitly opts in."""
     config = task.get("resource_budget")
     if config is None: return None
     if not isinstance(config, dict): raise ValueError("resource_budget must be an object")
-    return recommend_render_budget(**config).to_dict()
+    options = dict(config)
+    if options.pop("auto_detect", False):
+        return detect_local_device_budget(**options).to_dict()
+    return recommend_render_budget(**options).to_dict()
 
 
 
