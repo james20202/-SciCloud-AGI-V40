@@ -20,6 +20,7 @@ class WorkflowEngine:
         # Optional event sink keeps the engine usable in isolation and in legacy tests.
         self.event_publisher=event_publisher
         self.last_event_error=None
+        self.last_event_result=None
 
     def _path(self,wid): return os.path.join(self.workflow_dir,f'{wid}.json')
     def _now(self): return datetime.now().isoformat(timespec='seconds')
@@ -36,10 +37,12 @@ class WorkflowEngine:
             else:
                 result=self.event_publisher(event_type,payload)
             self.last_event_error=None
+            self.last_event_result=result
             return result
         except Exception as exc:
             # Event reporting must not roll back an already persisted production state.
             self.last_event_error=f'{event_type}: {exc}'
+            self.last_event_result=None
             return None
 
     def create_from_plan(self, plan):
