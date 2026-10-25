@@ -133,9 +133,9 @@ class WorkflowEngine:
                     candidate for candidate in tasks
                     if candidate.get('type') == dependency_type
                 ]
-                # A stage omitted from a custom plan is optional; when present,
-                # all tasks in that stage must finish before this task can start.
-                if prerequisites and not all(
+                # Missing prerequisite stages are not implicitly satisfied.
+                # This prevents partial plans from bypassing required production steps.
+                if not prerequisites or not all(
                     candidate.get('status') == STATUS_DONE
                     for candidate in prerequisites
                 ):
