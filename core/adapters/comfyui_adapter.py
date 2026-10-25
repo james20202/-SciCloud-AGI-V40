@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 from core.adapters.base import BaseAdapter, AdapterResult
 from core.character_reference_comfyui import bind_character_references
 from core.comfyui_workflow_registry import compile_workflow, WorkflowManifestError
+from core.render_budget import budget_from_task, apply_budget_to_graph
 
 
 class ComfyUIAdapter(BaseAdapter):
@@ -57,6 +58,13 @@ class ComfyUIAdapter(BaseAdapter):
         workflow, error = self._workflow(task, context)
         if error:
             return AdapterResult(False, error)
+        budget_report = None
+        try:
+            budget = budget_from_task(task)
+            if budget is not None:
+                workflow, budget_report = apply_budget_to_graph(workflow, budget)
+        except (TypeError, ValueError, KeyError) as exc:
+            return AdapterResult(False, f"本地资源预算配置无效：{exc}")
         reference_report = {"success": True, "bound": 0, "warnings": []}
         references = task.get("character_references") or context.get("character_references") or []
         if references:
@@ -76,7 +84,7 @@ class ComfyUIAdapter(BaseAdapter):
             pid = result.get('prompt_id')
             if not pid:
                 return AdapterResult(False, 'ComfyUI 未返回 prompt_id。', data=result)
-            return AdapterResult(True, 'ComfyUI 工作流已提交', data={'prompt_id': pid, 'queued': True, 'reference_report': reference_report})
+            return AdapterResult(True, 'ComfyUI 工作流已提交', data={'prompt_id': pid, 'queued': True, 'reference_report': reference_report, 'resource_budget': budget_report})
         except Exception as e:
             detail = ''
             if isinstance(e, HTTPError):
@@ -185,4 +193,5 @@ class ComfyUIAdapter(BaseAdapter):
             message += f" 角色参考图提示：{len(reference_report['warnings'])} 项未注入，请检查工作流节点标记。"
         return AdapterResult(True, message, outputs=saved,
                              data={'prompt_id': prompt_id, 'output_refs': refs,
-                                   'completed': True, 'reference_report': reference_report})
+                                   'completed': True, 'reference_report': reference_report,
+                                   'resource_budget': submitted.data.get('resource_budget')})
