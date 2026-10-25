@@ -65,6 +65,8 @@ class WorkflowQueuePage(QWidget):
         event=workflow_engine.last_event_result or {}
         if event_error:
             bot_text=f"Production Bot 事件报告失败：{event_error}。工作流状态仍已保存。"
+        elif event.get('success') is False and str(event.get('message', '')).startswith('没有 Bot 订阅事件：'):
+            bot_text=f"Production Bot：事件 {event.get('message', '').split('：', 1)[-1]} 已记录，当前没有专用处理器。"
         elif event.get('success') is False:
             bot_text=f"Production Bot 事件异常：{event.get('message', '未提供错误详情')}"
         else:
