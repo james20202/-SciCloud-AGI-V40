@@ -82,7 +82,19 @@ class QCEngine:
         return {'success':True,'code':'STRUCTURE_OK','message':'任务 ID、分镜关联和阶段依赖结构有效'}
 
     def inspect_workflow(self,wid):
-        wf=workflow_engine.load(wid)
+        try:
+            wf=workflow_engine.load(wid)
+        except Exception as exc:
+            final={
+                'success':False,
+                'workflow_id':wid,
+                'message':f'无法读取工作流，QC 中止：{exc}',
+                'failed_check':{'success':False,'code':'WORKFLOW_LOAD_FAILED'},
+                'results':[],
+                'checked_at':datetime.now().isoformat(timespec='seconds'),
+            }
+            self.last_result=final
+            return final
         structure=self._structural_check(wf)
         if not structure.get('success'):
             final={'success':False,'workflow_id':wid,'message':structure['message'],'failed_check':structure,'results':[],'checked_at':datetime.now().isoformat(timespec='seconds')}
