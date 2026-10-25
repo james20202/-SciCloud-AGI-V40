@@ -1,4 +1,4 @@
-import json, os, re
+import json, os, re, tempfile
 from datetime import datetime
 from uuid import uuid4
 from core.config import PROJECT_DIR
@@ -111,9 +111,26 @@ class DirectorPlanEngine:
         return [{"id":i,"type":t,"name":n,"status":"pending","progress":0} for i,t,n in names]
 
     def save_plan(self, plan):
-        safe = re.sub(r'[^a-zA-Z0-9_-]+','_', plan['plan_id'])
+        if not isinstance(plan, dict):
+            raise ValueError('导演计划必须是对象')
+        plan_id=plan.get('plan_id')
+        if not isinstance(plan_id, str) or not plan_id.strip():
+            raise ValueError('导演计划缺少有效 plan_id')
+        safe = re.sub(r'[^a-zA-Z0-9_-]+','_', plan_id).strip('_')
+        if not safe:
+            raise ValueError('导演计划 plan_id 无法生成安全文件名')
+        os.makedirs(self.project_dir, exist_ok=True)
         path=os.path.join(self.project_dir, safe + '.json')
-        with open(path,'w',encoding='utf-8') as f: json.dump(plan,f,ensure_ascii=False,indent=2)
+        fd,tmp_path=tempfile.mkstemp(prefix='.plan-',suffix='.tmp',dir=self.project_dir)
+        try:
+            with os.fdopen(fd,'w',encoding='utf-8') as f:
+                json.dump(plan,f,ensure_ascii=False,indent=2,allow_nan=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path,path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
         return path
 
     def load_plans(self):
