@@ -15,7 +15,9 @@ Do not replace the current Agent/Director architecture with a chat bot. Treat **
 
 Use named events such as `director.plan.requested`, `script.approved`, `storyboard.created`, `workflow.ready`, `task.failed`, `qc.failed`, `qc.passed`, and `render.completed`. Event payloads should carry stable IDs (project, episode, plan, workflow, storyboard, task, artifact), a timestamp, and a schema version as the contract matures.
 
-The initial local runtime is intentionally small: typed-by-convention event names, JSON-safe payloads, handler subscriptions, JSONL audit records, and deduplication for completed event IDs. It does not create a second production scheduler or run model calls itself.
+The initial local runtime is intentionally small: typed-by-convention event names, JSON-safe payloads, handler subscriptions, JSONL audit records, per-handler completion checkpoints, and rejection when a previously seen event ID is reused with different content. Retries skip handlers already checkpointed as successful. It does not create a second production scheduler or run model calls itself.
+
+The WorkflowEngine can receive an optional event publisher and emits lifecycle events after state persistence (workflow.ready, task.started, task.completed, task.failed, task.retried, workflow.paused, workflow.resumed). The publisher is optional so legacy callers and isolated tests remain compatible. Event delivery failures are recorded on the engine and do not roll back saved workflow state.
 
 ## First Bot roles for SciCloud
 
@@ -46,4 +48,4 @@ The initial local runtime is intentionally small: typed-by-convention event name
 
 ## Limitations
 
-This is an architectural foundation, not yet a production-grade durable queue. JSONL audit/deduplication covers completed event IDs; it does not guarantee exactly-once external side effects, atomic event/asset transactions, concurrent multi-process safety, or automatic replay of interrupted handlers. Those require explicit follow-up work and tests.
+This is an architectural foundation, not yet a production-grade durable queue. JSONL handler checkpoints reduce duplicate work on retry, but a crash between a handler's external side effect and its completion checkpoint can still repeat that side effect. The log is not fsync-backed, multi-process writes are not coordinated, event delivery and workflow persistence are not atomic, and there is no general background replay worker. Those require explicit follow-up work and tests.
