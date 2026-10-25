@@ -68,3 +68,39 @@ def test_completed_workflow_without_media_is_not_success():
         result = adapter.render(model, {'workflow': {'1': {}}, 'output_dir': outdir})
     assert not result.success
     assert '没有发现可下载' in result.message
+
+
+def test_adapter_compiles_manifest_into_api_graph():
+    adapter = ComfyUIAdapter()
+    manifest = {
+        'id': 'test-txt2img',
+        'version': 1,
+        'capability': 'image.text2image',
+        'runner': 'comfyui',
+        'graph': {
+            '4': {'class_type': 'CheckpointLoaderSimple', 'inputs': {'ckpt_name': '$assets.checkpoint'}},
+            '3': {'class_type': 'KSampler', 'inputs': {'steps': 15, 'cfg': 7.0}},
+        },
+        'params': [
+            {'name': 'steps', 'inject': {'type': 'scalar', 'to': [['3', 'steps']]}},
+        ],
+    }
+    workflow, error = adapter._workflow(
+        {'workflow_manifest': manifest, 'workflow_params': {'steps': 24},
+         'workflow_assets': {'checkpoint': 'local-checkpoint.safetensors'}},
+        {},
+    )
+    assert error is None
+    assert workflow['3']['inputs']['steps'] == 24
+    assert workflow['4']['inputs']['ckpt_name'] == 'local-checkpoint.safetensors'
+    assert manifest['graph']['3']['inputs']['steps'] == 15
+
+
+def test_adapter_rejects_invalid_manifest_before_submission():
+    adapter = ComfyUIAdapter()
+    workflow, error = adapter._workflow(
+        {'workflow_manifest': {'id': '../bad'}},
+        {},
+    )
+    assert workflow is None
+    assert '工作流清单无效' in error
