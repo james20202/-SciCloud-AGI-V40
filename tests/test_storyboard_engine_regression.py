@@ -49,3 +49,18 @@ def test_create_from_plan_uses_scene_fallback_when_explicit_scene_is_missing(tmp
     assert [shot["scene_id"] for shot in storyboard["shots"]] == [
         "SCENE-1", "SCENE-1", "SCENE-1", "SCENE-2"
     ]
+
+
+def test_storyboard_path_rejects_traversal_ids(tmp_path):
+    import pytest
+
+    director = StoryboardDirector(directory=str(tmp_path))
+    for storyboard_id in ("../outside", "nested/storyboard", r"nested\storyboard", ""):
+        with pytest.raises(ValueError):
+            director._path(storyboard_id)
+
+
+def test_storyboard_load_handles_unsafe_id_without_reading_outside_directory(tmp_path):
+    director = StoryboardDirector(directory=str(tmp_path))
+
+    assert director.load("../outside") is None
