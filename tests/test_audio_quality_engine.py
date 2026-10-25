@@ -43,3 +43,30 @@ def test_audio_inspection_fails_when_ffprobe_is_unavailable(tmp_path):
     result = MediaQualityEngine(which=lambda _: False).inspect_audio(str(audio))
     assert result["passed"] is False
     assert result["errors"] == ["probe_failed"]
+
+
+def test_qc_engine_routes_audio_outputs_to_audio_inspector(tmp_path, monkeypatch):
+    import core.qc_engine as qc_module
+    from core.qc_engine import QCEngine
+
+    audio = tmp_path / "voice.wav"
+    audio.write_bytes(b"fake but non-empty")
+    expected = {"passed": False, "success": False, "message": "missing audio stream",
+                "errors": ["missing_audio_stream"]}
+    calls = []
+
+    class FakeAudioInspector:
+        def inspect_audio(self, path):
+            calls.append(path)
+            return expected
+
+    monkeypatch.setattr(qc_module, "media_quality_engine", FakeAudioInspector())
+    report = QCEngine().inspect_task(
+        {"workflow_id": "WF-AUDIO"},
+        {"id": "TASK-VOICE", "type": "voice", "outputs": [str(audio)]},
+    )
+
+    assert calls == [str(audio)]
+    assert report["success"] is False
+    assert report["checks"][0]["media_quality"] == expected
+    assert "音频技术质检未通过" in report["checks"][0]["message"]
