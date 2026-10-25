@@ -45,12 +45,19 @@ class WorkflowEngine:
             'sound':['video','voice'], 'edit':['video','sound','voice'], 'qc':['edit'], 'publish':['qc']
         }
         tasks=[]
+        ids_by_type={}
+        for item in raw_tasks:
+            ids_by_type.setdefault(item['type'], []).append(item['id'])
         for t in raw_tasks:
             task=dict(t)
             task_type=task.get('type')
             if not task_type: raise ValueError(f"任务 {task['id']} 缺少 type")
-            task['status']=STATUS_READY if not deps.get(task_type) else STATUS_PENDING
-            task['progress']=0; task['depends_on']=deps.get(task_type,[])
+            dependency_types=deps.get(task_type,[])
+            dependency_ids=[]
+            for dependency_type in dependency_types:
+                dependency_ids.extend(ids_by_type.get(dependency_type,[]))
+            task['status']=STATUS_READY if not dependency_ids else STATUS_PENDING
+            task['progress']=0; task['depends_on']=dependency_ids
             task['started_at']=None; task['finished_at']=None; task['error']=None
             task['storyboard_id']=storyboard_id
             tasks.append(task)
@@ -76,9 +83,9 @@ class WorkflowEngine:
         return out
 
     def _refresh_ready(self,wf):
-        done_types={t.get('type') for t in wf.get('tasks',[]) if t.get('status')==STATUS_DONE}
+        done_ids={t.get('id') for t in wf.get('tasks',[]) if t.get('status')==STATUS_DONE}
         for t in wf.get('tasks',[]):
-            if t.get('status') in (STATUS_PENDING,STATUS_READY) and all(d in done_types for d in t.get('depends_on',[])):
+            if t.get('status') in (STATUS_PENDING,STATUS_READY) and all(d in done_ids for d in t.get('depends_on',[])):
                 t['status']=STATUS_READY
         tasks=wf.get('tasks',[])
         if tasks and all(t.get('status')==STATUS_DONE for t in tasks): wf['status']='completed'
