@@ -90,3 +90,46 @@ def test_legacy_edit_without_title_card_dependency_remains_runnable(tmp_path):
     engine._refresh_ready(workflow)
 
     assert workflow["tasks"][-1]["status"] == STATUS_READY
+
+
+
+def test_workflow_carries_director_duration_target_to_edit_task(tmp_path, monkeypatch):
+    import core.workflow_engine as module
+    monkeypatch.setattr(
+        module.storyboard_director,
+        "create_from_plan",
+        lambda plan: {"storyboard_id": "SB-DURATION-TEST", "shots": []},
+    )
+    engine = WorkflowEngine(project_dir=str(tmp_path))
+    workflow = engine.create_from_plan({
+        "plan_id": "PLAN-DURATION-TEST",
+        "title": "时长传递测试",
+        "intent": {"duration_seconds": 60},
+        "tasks": [
+            {"id": "STORY-1", "type": "story"},
+            {"id": "EDIT-1", "type": "edit"},
+        ],
+    })
+    edit = next(task for task in workflow["tasks"] if task["type"] == "edit")
+    assert edit["expected_duration_seconds"] == 60.0
+
+
+def test_workflow_does_not_overwrite_explicit_edit_duration_target(tmp_path, monkeypatch):
+    import core.workflow_engine as module
+    monkeypatch.setattr(
+        module.storyboard_director,
+        "create_from_plan",
+        lambda plan: {"storyboard_id": "SB-DURATION-OVERRIDE", "shots": []},
+    )
+    engine = WorkflowEngine(project_dir=str(tmp_path))
+    workflow = engine.create_from_plan({
+        "plan_id": "PLAN-DURATION-OVERRIDE",
+        "title": "显式时长测试",
+        "intent": {"duration_seconds": 60},
+        "tasks": [
+            {"id": "STORY-1", "type": "story"},
+            {"id": "EDIT-1", "type": "edit", "expected_duration_seconds": 45},
+        ],
+    })
+    edit = next(task for task in workflow["tasks"] if task["type"] == "edit")
+    assert edit["expected_duration_seconds"] == 45
