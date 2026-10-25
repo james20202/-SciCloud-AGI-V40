@@ -10,6 +10,7 @@ from core.director_plan import director_plan_engine
 from core.storyboard_engine import storyboard_director
 from core.qc_engine import qc_engine
 from core.motion_graphics_engine import motion_graphics_engine
+from core.shot_contract import normalize_shot, build_shot_manifest
 
 ADAPTERS={'ffmpeg':FFmpegAdapter(),'comfyui':ComfyUIAdapter(),'tts_command':TTSCommandAdapter()}
 TASK_TO_SKILL={'story':'SKILL-STORY','character':'SKILL-STORY','scene':'SKILL-STORY','storyboard':'SKILL-STORY','prompt':'SKILL-PROMPT','image':'SKILL-IMAGE','video':'SKILL-VIDEO','voice':'SKILL-TTS','sound':'SKILL-SOUND','edit':'SKILL-EDIT','qc':'SKILL-QC','title_card':'SKILL-EDIT','motion_graphics':'SKILL-EDIT'}
@@ -165,10 +166,12 @@ class ExecutionEngine:
                             'scene_id':shot.get('scene_id'),
                             'character_ids':shot.get('character_ids',[]),
                         })
+                        record=normalize_shot(record,index)
                         records.append(record)
                     # Timing is an explicit production contract: downstream video/edit
                     # stages need both the sum of shot durations and the plan target.
-                    actual_duration=round(sum(float(item.get('duration',0) or 0) for item in records),3)
+                    timeline=build_shot_manifest(records)
+                    actual_duration=timeline['planned_duration_seconds']
                     intent=plan.get('intent',{}) if isinstance(plan,dict) else {}
                     target_raw=intent.get('duration_seconds', intent.get('target_duration_seconds')) if isinstance(intent,dict) else None
                     try:
@@ -184,7 +187,7 @@ class ExecutionEngine:
                         'shot_count':len(records),
                         'shot_durations_seconds':[round(float(item.get('duration',0) or 0),3) for item in records],
                     }
-                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompt_count':len(records),'timing_summary':timing_summary,'prompts':records})
+                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompt_count':len(records),'timing_summary':timing_summary,'timeline_manifest':timeline,'prompts':records})
                     payload={'storyboard_id':storyboard_id,'prompt_count':len(records),'prompts_path':path,'timing_summary':timing_summary}
                     if target_duration is not None and not timing_summary['within_target_tolerance']:
                         message=f"已生成 {len(records)} 条镜头提示词；镜头总时长 {actual_duration:g}s，与目标 {target_duration:g}s 相差 {actual_duration-target_duration:+g}s"
