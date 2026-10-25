@@ -106,3 +106,22 @@ def test_edit_media_qc_receives_expected_episode_duration(tmp_path, monkeypatch)
     })
     assert result["success"] is True
     assert calls == [(str(video), 60.0)]
+
+
+
+def test_video_probe_rejects_duration_mismatch_against_episode_target(tmp_path):
+    path = tmp_path / "short_episode.mp4"
+    path.write_bytes(b"fixture")
+
+    def runner(command, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "format": {"duration": "30", "size": "100"},
+            "streams": [{"codec_type": "video", "codec_name": "h264", "width": 720, "height": 1280}],
+        }), stderr="")
+
+    result = MediaQualityEngine(runner=runner, which=lambda _: False).inspect(
+        str(path), expected_duration=60
+    )
+    assert result["passed"] is False
+    assert "duration_mismatch" in result["errors"]
+    assert result["expected_duration_seconds"] == 60
