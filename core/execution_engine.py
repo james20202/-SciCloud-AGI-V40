@@ -16,6 +16,16 @@ TASK_TO_SKILL={'story':'SKILL-STORY','character':'SKILL-STORY','scene':'SKILL-ST
 class ExecutionEngine:
     def __init__(self): self.last_result=None
 
+    def _start_or_reject(self, wid, task_id):
+        wf=workflow_engine.start_task(wid,task_id)
+        task=next((item for item in wf.get('tasks',[]) if item.get('id')==task_id),None)
+        if not task or task.get('status') != 'running':
+            message='工作流已暂停，任务未启动' if wf.get('paused') else f"任务未能进入运行状态：{task_id}"
+            result={'success':False,'message':message,'task_id':task_id,'workflow_id':wid}
+            self.last_result=result
+            return result
+        return None
+
     def _artifact(self,wf,task,kind,data):
         # IDs originate in plans; sanitize every path component to prevent path traversal.
         safe_workflow=re.sub(r'[^A-Za-z0-9_-]+','_',str(wf.get('workflow_id') or 'workflow')).strip('_') or 'workflow'
@@ -50,7 +60,9 @@ class ExecutionEngine:
         if not skill or not skill.get('enabled'):
             return {'success':False,'message':f'Skill 未启用：{skill_id}'}
         if task.get('type') == 'qc':
-            workflow_engine.start_task(wid,task_id)
+            blocked=self._start_or_reject(wid,task_id)
+            if blocked:
+                return blocked
             result=qc_engine.inspect_workflow(wid)
             # Store QC report as a real local artifact.
             path=self._artifact(wf,task,'qc_report',result)
@@ -65,7 +77,9 @@ class ExecutionEngine:
         model=model_hub.find_for_skill(task.get('type'),task.get('model_id'))
         # Planning tasks must produce real domain artifacts, not just generic execution logs.
         if task.get('type') in {'story','character','scene','storyboard','prompt'}:
-            workflow_engine.start_task(wid,task_id)
+            blocked=self._start_or_reject(wid,task_id)
+            if blocked:
+                return blocked
             try:
                 plans=director_plan_engine.load_plans()
                 plan=next((p for p in plans if p.get('plan_id')==wf.get('plan_id')),None)
@@ -130,7 +144,9 @@ class ExecutionEngine:
             return {'success':False,'message':f"没有可用的本地模型/适配器：{task.get('type')}。请到 Model Hub 启用。"}
         adapter=ADAPTERS.get(model.get('adapter'))
         if not adapter: return {'success':False,'message':f"未注册适配器：{model.get('adapter')}"}
-        workflow_engine.start_task(wid,task_id)
+        blocked=self._start_or_reject(wid,task_id)
+            if blocked:
+                return blocked
         result=adapter.execute(model,task,{'workflow':task.get('workflow'),'command':task.get('command')})
         raw_outputs=list(result.outputs or [])
         valid_outputs=[]
