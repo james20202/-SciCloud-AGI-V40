@@ -138,3 +138,60 @@ def test_storyboard_task_failure_marks_task_failed(monkeypatch, tmp_path):
     assert "不存在或没有镜头" in result["message"]
     assert workflow["tasks"][0]["status"] == "failed"
     assert workflow["tasks"][0]["error"] == result["message"]
+
+
+
+class FakeAdapterResult:
+    def __init__(self, outputs, success=True):
+        self.success = success
+        self.message = "adapter reported success"
+        self.outputs = outputs
+        self.data = {"adapter": "fake"}
+
+    def to_dict(self):
+        return {
+            "success": self.success,
+            "message": self.message,
+            "outputs": self.outputs,
+            "data": self.data,
+        }
+
+
+class FakeMediaAdapter:
+    def __init__(self, outputs, success=True):
+        self.result = FakeAdapterResult(outputs, success)
+
+    def execute(self, model, task, context):
+        return self.result
+
+
+class FakeMediaModelHub(FakeModelHub):
+    def find_for_skill(self, *args):
+        return {"model_id": "MODEL-FAKE", "adapter": "fake", "enabled": True}
+
+
+def test_media_task_does_not_complete_when_adapter_produces_no_file(monkeypatch, tmp_path):
+    engine, workflow = setup_engine(monkeypatch, tmp_path, "image")
+    monkeypatch.setattr(execution_module, "model_hub", FakeMediaModelHub())
+    monkeypatch.setattr(execution_module, "ADAPTERS", {"fake": FakeMediaAdapter(outputs=[])})
+
+    result = engine.execute("WF-TEST", "TASK-05")
+
+    assert result["success"] is False
+    assert "没有生成可验证" in result["message"]
+    assert workflow["tasks"][0]["status"] == "failed"
+    assert workflow["tasks"][0]["outputs"] == []
+
+
+def test_media_task_completes_when_adapter_output_is_a_nonempty_file(monkeypatch, tmp_path):
+    engine, workflow = setup_engine(monkeypatch, tmp_path, "image")
+    media_path = tmp_path / "generated.png"
+    media_path.write_bytes(b"valid-test-media")
+    monkeypatch.setattr(execution_module, "model_hub", FakeMediaModelHub())
+    monkeypatch.setattr(execution_module, "ADAPTERS", {"fake": FakeMediaAdapter(outputs=[str(media_path)])})
+
+    result = engine.execute("WF-TEST", "TASK-05")
+
+    assert result["success"] is True
+    assert result["outputs"] == [str(media_path)]
+    assert workflow["tasks"][0]["status"] == "done"
