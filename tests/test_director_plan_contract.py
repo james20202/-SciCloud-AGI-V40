@@ -66,3 +66,11 @@ def test_save_plan_is_atomic_and_rejects_invalid_plan_id(tmp_path):
 
     assert json.loads(open(path, encoding="utf-8").read())["title"] == "second"
     assert not list(tmp_path.glob(".plan-*.tmp"))
+
+
+def test_default_director_tasks_include_motion_graphics_title_card(tmp_path):
+    engine = DirectorPlanEngine(project_dir=str(tmp_path))
+    tasks = engine._tasks()
+    title_card = next(task for task in tasks if task["type"] == "title_card")
+    assert title_card["id"] == "TASK-13"
+    assert "标题卡" in title_card["name"]
