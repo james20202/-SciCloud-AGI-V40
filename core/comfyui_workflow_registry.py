@@ -43,6 +43,10 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     capability = manifest.get("capability")
     if not isinstance(capability, str) or not capability.strip():
         raise WorkflowManifestError("工作流缺少 capability")
+    if capability not in CAPABILITIES:
+        raise WorkflowManifestError(
+            f"不支持的工作流 capability：{capability}；支持项：{', '.join(sorted(CAPABILITIES))}"
+        )
     runner = manifest.get("runner", "comfyui")
     if runner != "comfyui":
         raise WorkflowManifestError("SciCloud 本地注册表目前只执行 ComfyUI 工作流")
