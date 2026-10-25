@@ -1,4 +1,4 @@
-import json, os
+import json, math, os
 from datetime import datetime
 from core.workflow_engine import workflow_engine, STATUS_DONE
 from core.vision_qc import vision_qc
@@ -82,7 +82,7 @@ class QCEngine:
                     target_duration=timing.get('target_duration_seconds') if isinstance(timing,dict) else None
                     if target_duration is not None:
                         target_duration=float(target_duration)
-                        if not __import__('math').isfinite(target_duration) or target_duration <= 0:
+                        if not math.isfinite(target_duration) or target_duration <= 0:
                             raise ValueError('目标时长必须是大于 0 的有限数值')
                         allowed_delta=max(1.0,target_duration*0.02)
                         delta=measured-target_duration
