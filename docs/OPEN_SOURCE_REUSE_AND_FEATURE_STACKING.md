@@ -84,3 +84,8 @@ Implemented natively in this repository:
 - `publish` tasks now call this package builder through the existing execution engine.
 
 No extra runtime dependency, model download, or new database is required. A draft subtitle is clearly marked as planned-shot timing until aligned to actual audio.
+
+
+## Production QC: target-duration gate
+
+The prompt-stage artifact records both the sum of planned shot durations and the requested episode duration. QC verifies that the reported actual duration matches the canonical shot sum and that the shot sum is within the target tolerance (max of 1 second or 2% of target). A large mismatch, such as a 30-second shot plan for a 60-second target, fails the prompt-contract check rather than allowing a structurally valid but undersized episode to proceed unnoticed. This is planned-timeline validation; it does not claim that rendered media or voice audio has the same duration until the media QC stage probes actual files.
