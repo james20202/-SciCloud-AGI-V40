@@ -107,7 +107,7 @@ class DirectorPlanEngine:
         return shots
 
     def _tasks(self):
-        names=[("TASK-01","story","生成/完善剧本"),("TASK-02","character","建立人物资产"),("TASK-03","scene","建立场景资产"),("TASK-04","storyboard","生成分镜"),("TASK-05","prompt","生成镜头Prompt"),("TASK-06","image","生成关键画面"),("TASK-07","video","生成动态镜头"),("TASK-08","voice","生成配音"),("TASK-09","sound","生成音效与BGM"),("TASK-10","edit","进入剪辑时间轴"),("TASK-11","qc","质量检查"),("TASK-12","publish","准备发布")]
+        names=[("TASK-01","story","生成/完善剧本"),("TASK-02","character","建立人物资产"),("TASK-03","scene","建立场景资产"),("TASK-04","storyboard","生成分镜"),("TASK-05","prompt","生成镜头Prompt"),("TASK-06","image","生成关键画面"),("TASK-07","video","生成动态镜头"),("TASK-08","voice","生成配音"),("TASK-09","sound","生成音效与BGM"),("TASK-10","edit","进入剪辑时间轴"),("TASK-11","qc","质量检查"),("TASK-12","publish","准备发布"),("TASK-13","title_card","生成片头/章节标题卡")]
         return [{"id":i,"type":t,"name":n,"status":"pending","progress":0} for i,t,n in names]
 
     def save_plan(self, plan):
