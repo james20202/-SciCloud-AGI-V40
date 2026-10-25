@@ -5,6 +5,7 @@ from core.config import PROJECT_DIR
 from core.bible_manager import bible_manager
 from core.prompt_engine import prompt_engine
 from core.continuity_engine import continuity_engine
+from core.shot_contract import normalize_shot, normalize_shots
 
 STORYBOARD_DIR = os.path.join(PROJECT_DIR, 'storyboards')
 os.makedirs(STORYBOARD_DIR, exist_ok=True)
@@ -91,7 +92,8 @@ class StoryboardDirector:
                 'continuity_sensitive': bool(raw.get('continuity_sensitive', True)),
                 'status':'planned', 'prompt_status':'pending'
             }
-            shots.append(shot)
+            # Normalize at the storyboard boundary while preserving legacy fields.
+            shots.append(normalize_shot(shot, i))
         storyboard={'storyboard_id':'STORYBOARD-'+uuid4().hex[:8].upper(),'version':1,'created_at':datetime.now().isoformat(timespec='seconds'),'updated_at':datetime.now().isoformat(timespec='seconds'),'plan_id':plan.get('plan_id'),'title':plan.get('title'),'shots':shots}
         return self.save(storyboard)
 
@@ -102,6 +104,8 @@ class StoryboardDirector:
         path=self._path(storyboard.get('storyboard_id'))
         if not isinstance(storyboard.get('shots'), list):
             raise ValueError('分镜 shots 必须是列表')
+        # Old project files are normalized in memory; unknown shot fields survive.
+        storyboard['shots'] = normalize_shots(storyboard['shots'])
         storyboard['updated_at']=datetime.now().isoformat(timespec='seconds')
         fd,tmp_path=tempfile.mkstemp(prefix='.storyboard-',suffix='.tmp',dir=self.directory)
         try:
