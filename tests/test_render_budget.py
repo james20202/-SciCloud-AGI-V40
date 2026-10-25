@@ -56,3 +56,20 @@ def test_task_budget_is_opt_in_and_serializable():
 def test_invalid_task_budget_type_is_rejected():
     with pytest.raises(ValueError, match="must be an object"):
         budget_from_task({"resource_budget": "8GB"})
+
+
+def test_apply_budget_clamps_common_video_inputs_and_preserves_source():
+    from core.render_budget import apply_budget_to_graph
+
+    graph = {
+        "1": {"class_type": "EmptyLatentImage", "inputs": {"width": 1344, "height": 768, "batch_size": 4}},
+        "2": {"class_type": "VideoSampler", "inputs": {"length": 81}},
+    }
+    budget = recommend_render_budget(total_ram_gb=8, backend="mps").to_dict()
+    compiled, report = apply_budget_to_graph(graph, budget)
+    assert compiled["1"]["inputs"]["width"] == 768
+    assert compiled["1"]["inputs"]["height"] == 768
+    assert compiled["1"]["inputs"]["batch_size"] == 1
+    assert compiled["2"]["inputs"]["length"] == 25
+    assert len(report["adjustments"]) == 4
+    assert graph["1"]["inputs"]["width"] == 1344
