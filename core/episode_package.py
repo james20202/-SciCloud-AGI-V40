@@ -37,6 +37,7 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
     subtitles: list[tuple[str, str]] = []
     qc_payloads: list[dict[str, Any]] = []
     qc_report_found = False
+    qc_failed = False
     final_video_found = False
     video_suffixes = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
@@ -73,9 +74,9 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
                         payload = json.load(handle)
                     if isinstance(payload, dict):
                         if payload.get("success") is False:
-                            raise ValueError("质检报告未通过，拒绝生成成片交付包")
+                            qc_failed = True
                         if isinstance(payload.get("success"), bool):
-                            qc_report_found = True
+                            qc_report_found = qc_report_found or payload.get("success") is True
                             qc_payloads.append(payload)
                 except (OSError, ValueError):
                     pass
@@ -89,6 +90,8 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
                 except (OSError, ValueError):
                     pass
 
+    if qc_failed:
+        raise ValueError("质检报告未通过，拒绝生成成片交付包")
     if not qc_report_found:
         raise ValueError("没有找到明确通过的质检报告，拒绝生成成片交付包")
     if not final_video_found:
