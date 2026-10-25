@@ -86,6 +86,6 @@ def render_srt(timeline: dict[str, Any]) -> str:
             raise ValueError("字幕结束时间必须大于起始时间且起始时间不能小于 0")
         if start < previous_end - 0.001:
             raise ValueError("SRT 字幕时间不能重叠；请先合并或重排字幕")
-        blocks.append(f"{index}\\n{_srt_time(start)} --> {_srt_time(end)}\\n{text.strip()}")
+        blocks.append(f"{index}\n{_srt_time(start)} --> {_srt_time(end)}\n{text.strip()}")
         previous_end = end
-    return "\\n\\n".join(blocks) + ("\\n" if blocks else "")
+    return "\n\n".join(blocks) + ("\n" if blocks else "")
