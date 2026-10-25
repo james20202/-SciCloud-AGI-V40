@@ -147,8 +147,20 @@ class ExecutionEngine:
         blocked=self._start_or_reject(wid,task_id)
         if blocked:
             return blocked
-        result=adapter.execute(model,task,{'workflow':task.get('workflow'),'command':task.get('command')})
-        raw_outputs=list(result.outputs or [])
+        try:
+            result=adapter.execute(model,task,{'workflow':task.get('workflow'),'command':task.get('command')})
+            if result is None or not hasattr(result, 'success') or not hasattr(result, 'outputs'):
+                raise RuntimeError('适配器返回了无效结果对象')
+            raw_outputs=list(result.outputs or [])
+        except Exception as exc:
+            message=f'适配器执行异常：{exc}'
+            try:
+                workflow_engine.fail_task(wid,task_id,message)
+            except Exception:
+                pass
+            failure={'success':False,'message':message,'task_id':task_id,'workflow_id':wid,'outputs':[]}
+            self.last_result=failure
+            return failure
         valid_outputs=[]
         for output in raw_outputs:
             output_path=output.get('path') if isinstance(output,dict) else output
