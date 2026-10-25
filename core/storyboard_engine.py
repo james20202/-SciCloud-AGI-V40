@@ -27,8 +27,23 @@ class StoryboardDirector:
         shots=[]
         characters=plan.get('characters',[]); scenes=plan.get('scenes',[])
         for i, raw in enumerate(plan.get('shots', [])):
-            scene_id=raw.get('scene_id') or (scenes[min(i//3,len(scenes)-1)]['id'] if scenes else '')
-            char_ids=[c['id'] for c in characters[:1]] if characters else []
+            # Keep explicit IDs from the plan. The old conditional discarded a valid
+            # scene_id whenever the plan omitted its scenes array.
+            scene_id = raw.get('scene_id')
+            if not scene_id and scenes:
+                fallback_scene = scenes[min(i // 3, len(scenes) - 1)]
+                scene_id = fallback_scene.get('id', '') if isinstance(fallback_scene, dict) else ''
+            # Preserve multi-character shot assignments instead of silently replacing
+            # them with the first character in the plan.
+            raw_character_ids = raw.get('character_ids')
+            if isinstance(raw_character_ids, list):
+                char_ids = [
+                    item.get('id') if isinstance(item, dict) else item
+                    for item in raw_character_ids
+                ]
+                char_ids = [item for item in char_ids if isinstance(item, str) and item]
+            else:
+                char_ids = [c['id'] for c in characters[:1] if isinstance(c, dict) and c.get('id')]
             shot={
                 'id': raw.get('id') or f'SHOT-{i+1:04d}', 'index': i+1,
                 'duration': raw.get('duration', 5.0), 'type': raw.get('type', self.SHOT_TYPES[i%len(self.SHOT_TYPES)]),
