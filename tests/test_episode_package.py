@@ -56,3 +56,30 @@ def test_episode_package_rejects_empty_final_video_output(tmp_path):
     # An empty final video must block delivery even when other artifacts are valid.
     with pytest.raises(ValueError, match="最终视频文件"):
         build_episode_package(workflow, str(tmp_path / "with-missing.zip"))
+
+
+def test_episode_package_rejects_missing_final_video_even_when_other_artifacts_exist(tmp_path):
+    workflow = _workflow(tmp_path)
+    workflow["tasks"][0]["outputs"] = []
+    with pytest.raises(ValueError, match="最终视频文件"):
+        build_episode_package(workflow, str(tmp_path / "no-video.zip"))
+
+
+def test_episode_package_keeps_duplicate_basenames_without_overwriting(tmp_path):
+    workflow = _workflow(tmp_path)
+    first = tmp_path / "one" / "same.json"
+    second = tmp_path / "two" / "same.json"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text('{"first": true}', encoding="utf-8")
+    second.write_text('{"second": true}', encoding="utf-8")
+    workflow["tasks"][1]["outputs"] = [str(first), str(second)]
+    output = tmp_path / "duplicate-names.zip"
+    build_episode_package(workflow, str(output))
+    with zipfile.ZipFile(output) as archive:
+        artifact_names = [
+            name for name in archive.namelist()
+            if name.endswith(".json") and name.startswith("artifacts/PROMPT-1/")
+        ]
+        assert len(artifact_names) == 2
+        assert len(set(artifact_names)) == 2
