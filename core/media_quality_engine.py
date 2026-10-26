@@ -74,7 +74,7 @@ class MediaQualityEngine:
                 expected = float(expected_duration)
                 if not math.isfinite(expected) or expected <= 0:
                     errors.append("invalid_expected_duration")
-                elif math.isfinite(duration) and abs(duration - expected) > max(3.0, expected * 0.08):
+                elif math.isfinite(duration) and abs(duration - expected) > max(0.1, expected * 0.005):
                     errors.append("duration_mismatch")
             except (TypeError, ValueError, OverflowError):
                 errors.append("invalid_expected_duration")
@@ -139,7 +139,7 @@ class MediaQualityEngine:
                 expected = float(expected_duration)
                 if not math.isfinite(expected) or expected <= 0:
                     errors.append("invalid_expected_duration")
-                elif math.isfinite(duration) and abs(duration - expected) > max(3.0, expected * 0.08):
+                elif math.isfinite(duration) and abs(duration - expected) > max(0.1, expected * 0.005):
                     errors.append("duration_mismatch")
             except (ValueError, TypeError, OverflowError):
                 errors.append("invalid_expected_duration")

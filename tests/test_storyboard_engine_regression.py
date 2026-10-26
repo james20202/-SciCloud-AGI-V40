@@ -102,3 +102,51 @@ def test_storyboard_save_is_atomic_and_replaces_valid_json(tmp_path):
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert saved["title"] == "更新后标题"
     assert not list(tmp_path.glob(".storyboard-*.tmp"))
+
+
+def test_build_prompt_resolves_source_plan_when_ui_omits_plan(tmp_path, monkeypatch):
+    import core.storyboard_engine as module
+
+    director = StoryboardDirector(directory=str(tmp_path))
+    plan = {
+        "plan_id": "PLAN-AUTO-LINK",
+        "idea": "仙门夜雨",
+        "intent": {"genre": "修仙"},
+        "characters": [{"id": "CHAR-1", "name": "沈砚", "description": "白发剑修"}],
+        "scenes": [{"id": "SCENE-1", "name": "废弃仙门", "purpose": "发现异象"}],
+        "shots": [{
+            "id": "SHOT-1", "scene_id": "SCENE-1", "character_ids": ["CHAR-1"],
+            "duration": 5, "visual_prompt": "雨夜石阶上，剑刃泛起青光",
+        }],
+    }
+    storyboard = director.create_from_plan(plan)
+    captured = {}
+    monkeypatch.setattr(module, "prompt_engine", type("PromptStub", (), {
+        "generate_for_shot": staticmethod(lambda shot, received_plan, model: (
+            captured.update(plan=received_plan, shot=shot) or {
+                "prompt_id": "PROMPT-1", "prompt": "雨夜石阶"
+            }
+        ))
+    })())
+    monkeypatch.setattr(module, "continuity_engine", type("ContinuityStub", (), {
+        "build_prompt_constraints": staticmethod(lambda *_: [])
+    })())
+    monkeypatch.setattr(module, "director_plan_engine", type("PlanStub", (), {
+        "load_plans": staticmethod(lambda: [plan])
+    })())
+
+    record = director.build_prompt(storyboard["storyboard_id"], 0)
+    assert captured["plan"]["plan_id"] == "PLAN-AUTO-LINK"
+    assert captured["plan"]["characters"][0]["name"] == "沈砚"
+    assert record["prompt_id"] == "PROMPT-1"
+
+
+def test_build_prompt_rejects_out_of_range_shot_index(tmp_path):
+    import pytest
+
+    director = StoryboardDirector(directory=str(tmp_path))
+    storyboard = director.create_from_plan({"plan_id": "PLAN-INDEX", "shots": [{"id": "SHOT-1"}]})
+    with pytest.raises(ValueError, match="镜头索引越界"):
+        director.build_prompt(storyboard["storyboard_id"], 1)
+    with pytest.raises(ValueError, match="镜头索引越界"):
+        director.build_prompt(storyboard["storyboard_id"], -1)
