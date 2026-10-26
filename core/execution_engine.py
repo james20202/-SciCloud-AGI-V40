@@ -56,6 +56,43 @@ class ExecutionEngine:
                 os.remove(tmp_path)
         return path
 
+    def _ensure_workflow_storyboard(self, wid, wf, task, plan):
+        """Resolve and persist a storyboard binding for workflow storyboard/prompt tasks."""
+        storyboard_id = task.get('storyboard_id') or wf.get('storyboard_id')
+        if storyboard_id:
+            storyboard = storyboard_director.load(storyboard_id)
+            if not storyboard or not storyboard.get('shots'):
+                raise RuntimeError(f"分镜不存在或没有镜头：{storyboard_id}")
+        else:
+            plan_id = wf.get('plan_id') or (plan.get('plan_id') if isinstance(plan, dict) else None)
+            storyboard = next(
+                (item for item in storyboard_director.list()
+                 if item.get('plan_id') == plan_id and item.get('shots')),
+                None,
+            )
+            if storyboard is None:
+                if not isinstance(plan, dict):
+                    raise RuntimeError(f"无法自动创建分镜：找不到导演计划 {plan_id or '(未绑定)'}")
+                storyboard = storyboard_director.create_from_plan(plan)
+            storyboard_id = storyboard.get('storyboard_id')
+            if not storyboard_id:
+                raise RuntimeError('分镜创建成功但缺少 storyboard_id')
+
+        # Persist the binding at both workflow and task level so downstream tasks
+        # can resume after app restart instead of repeatedly failing on missing IDs.
+        saved = workflow_engine.load(wid)
+        if not isinstance(saved, dict):
+            saved = dict(wf)
+        saved['storyboard_id'] = storyboard_id
+        saved_task = next((item for item in saved.get('tasks', [])
+                           if item.get('id') == task.get('id')), None)
+        if saved_task is not None:
+            saved_task['storyboard_id'] = storyboard_id
+        workflow_engine.save(saved)
+        wf['storyboard_id'] = storyboard_id
+        task['storyboard_id'] = storyboard_id
+        return storyboard_id, storyboard
+
     def execute(self,wid,task_id):
         wf=workflow_engine.load(wid)
         task=next((x for x in wf['tasks'] if x['id']==task_id),None)
@@ -163,22 +200,12 @@ class ExecutionEngine:
                     raise RuntimeError(f"找不到导演计划：{wf.get('plan_id')}")
 
                 if task.get('type') == 'storyboard':
-                    storyboard_id=task.get('storyboard_id') or wf.get('storyboard_id')
-                    if not storyboard_id:
-                        raise RuntimeError('工作流缺少 storyboard_id，无法执行分镜任务')
-                    storyboard=storyboard_director.load(storyboard_id)
-                    if not storyboard or not storyboard.get('shots'):
-                        raise RuntimeError(f"分镜不存在或没有镜头：{storyboard_id}")
+                    storyboard_id,storyboard=self._ensure_workflow_storyboard(wid,wf,task,plan)
                     path=storyboard_director._path(storyboard_id)
                     payload={'storyboard_id':storyboard_id,'shot_count':len(storyboard['shots']),'storyboard_path':path}
                     message=f"分镜已就绪：{len(storyboard['shots'])} 个镜头"
                 elif task.get('type') == 'prompt':
-                    storyboard_id=task.get('storyboard_id') or wf.get('storyboard_id')
-                    if not storyboard_id:
-                        raise RuntimeError('工作流缺少 storyboard_id，无法生成镜头提示词')
-                    storyboard=storyboard_director.load(storyboard_id)
-                    if not storyboard or not storyboard.get('shots'):
-                        raise RuntimeError(f"分镜不存在或没有镜头：{storyboard_id}")
+                    storyboard_id,storyboard=self._ensure_workflow_storyboard(wid,wf,task,plan)
                     records=[]
                     for index, shot in enumerate(storyboard['shots']):
                         record=storyboard_director.build_prompt(storyboard_id,index,plan=plan,model='generic')
