@@ -58,7 +58,7 @@ def test_narration_script_prefers_dialogue_then_voiceover():
         {"dialogue": "", "voiceover": "夜色笼罩山门"},
         {"dialogue": None, "voiceover": 42},
     ])
-    assert script == "你是谁？\\n夜色笼罩山门"
+    assert script == "你是谁？\n夜色笼罩山门"
 
 
 def test_narration_script_rejects_non_list_shots():
