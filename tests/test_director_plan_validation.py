@@ -46,3 +46,11 @@ def test_director_page_rejects_malformed_shot_duration():
     with pytest.raises(ValueError, match="总时长"):
         page._validate_plan(bad)
     page.close()
+
+
+@pytest.mark.parametrize("duration", [7.5, 37.2, 59.5, 73.3])
+def test_director_plan_preserves_fractional_target_duration(tmp_path, duration):
+    engine = DirectorPlanEngine(project_dir=str(tmp_path))
+    plan = engine.create_plan("玄幻修仙主角觉醒", duration=duration)
+    assert plan["intent"]["duration_seconds"] == duration
+    assert round(sum(float(s["duration"]) for s in plan["shots"]), 1) == duration
