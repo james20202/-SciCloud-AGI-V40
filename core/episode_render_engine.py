@@ -120,7 +120,15 @@ def build_episode_edit_command(
             f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,setpts=PTS-STARTPTS,format=yuv420p[{label}]"
         )
         video_labels.append(f"[{label}]")
-    filters.append(f"{''.join(video_labels)}concat=n={len(video_paths)}:v=1:a=0[vout]")
+    # A target duration passed to FFmpeg's output -t alone only truncates media;
+    # it does not extend a short concatenated video. Pad the final frame and trim
+    # explicitly so the video stream reaches the requested duration, while QC can
+    # still inspect the resulting media and report the hold-frame padding.
+    filters.append(f"{''.join(video_labels)}concat=n={len(video_paths)}:v=1:a=0[vcat]")
+    filters.append(
+        f"[vcat]tpad=stop_mode=clone:stop_duration={target_duration:g},"
+        f"trim=duration={target_duration:g},setpts=PTS-STARTPTS[vout]"
+    )
 
     audio_labels = []
     for offset in range(len(audio_paths)):
