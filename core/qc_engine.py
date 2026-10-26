@@ -113,7 +113,7 @@ class QCEngine:
                         target_duration=float(target_duration)
                         if not math.isfinite(target_duration) or target_duration <= 0:
                             raise ValueError('目标时长必须是大于 0 的有限数值')
-                        allowed_delta=max(1.0,target_duration*0.02)
+                        allowed_delta=max(0.1,target_duration*0.005)
                         delta=measured-target_duration
                         if abs(delta)>allowed_delta:
                             raise ValueError(
