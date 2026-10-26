@@ -1,4 +1,4 @@
-import json, os, tempfile
+import json, math, os, tempfile
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.episode_engine import episode_engine
@@ -178,6 +178,22 @@ class EpisodePipeline:
         if not clips:
             return self._block(d,'assemble','没有真实视频或可转换为视频的分镜图片')
         total_duration=sum(float(x.get('duration_seconds') or 0) for x in clip_records)
+        expected_raw=d.get('duration_seconds')
+        if expected_raw is not None:
+            try:
+                expected_duration=float(expected_raw)
+            except (TypeError, ValueError, OverflowError):
+                return self._block(d,'assemble','剧集目标时长无效，拒绝生成成片')
+            if not math.isfinite(expected_duration) or expected_duration <= 0:
+                return self._block(d,'assemble','剧集目标时长必须是有限正数，拒绝生成成片')
+            tolerance=max(3.0,expected_duration*0.08)
+            if not math.isfinite(total_duration) or abs(total_duration-expected_duration)>tolerance:
+                return self._block(
+                    d,'assemble',
+                    f'镜头时长合计与剧集目标不匹配：目标 {expected_duration:.1f}s，镜头合计 {total_duration:.1f}s，允许误差 ±{tolerance:.1f}s',
+                    {'expected_duration_seconds':expected_duration,'actual_duration_seconds':total_duration,
+                     'tolerance_seconds':tolerance,'shot_count':len(clip_records)}
+                )
         audio_assets=episode_audio_engine.prepare(job,clip_records,os.path.join(self.root,eid,'audio'),total_duration)
         if not audio_assets.get('success'):
             return self._block(d,'assemble',audio_assets.get('message','对白/字幕准备失败'),audio_assets)
