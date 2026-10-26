@@ -12,8 +12,11 @@ python3 -m pip install -r requirements.txt
 
 ## 升级
 
-以后收到新的 V40 ZIP：打开软件 → 系统中心 → 导入 ZIP 升级包。
+一键升级（40.411 起）：打开软件 → 系统中心 → 检查在线更新，发现新版本后确认即可自动下载、备份并重启升级。
+没有网络时仍可使用“导入 ZIP 升级包”作为备用方式。
 升级程序会自动备份代码，并保留 `data/`、`projects/`、`output/`、`logs/`。
+
+注意：40.411 本身需要最后一次手动安装（导入 ZIP 或运行 install.command），装上 40.411 之后，后续版本才可以直接一键升级。
 
 ## 目录
 - `core/` AI与生产核心
@@ -176,3 +179,11 @@ python3 -m pip install -r requirements.txt
 - 新增自动化测试覆盖资产提取、重复执行、道具去重、对白/提示词保留，以及只重试失败镜头的保护规则。
 - 参考并沿用 MIT 许可的 [Comic-drama](https://github.com/tccnnd/Comic-drama) 中结构化剧本→人物/场景/镜头资产的流水线设计；V40.410 的提取器按 SciCloud 的资产登记接口独立适配。已直接复用的 Comic-drama 算法/时间线代码及完整 MIT 许可声明见 `THIRD_PARTY_NOTICES.md`。
 - 代码与测试通过 GitHub Actions 不等于已在用户 Mac 上完成完整 ComfyUI 实际渲染；本版本不安装 ComfyUI、不下载模型、不调用云端生成服务。
+
+
+## V40.411.0 · Modern Tech Theme & One-Click Upgrade
+
+- 界面改为现代科技感：深色底、青蓝主色 + 紫色辅助、细边框、圆角卡片与悬停/聚焦发光，替换原金色点缀；导航按钮数量不变，左侧仍是首页、创作、生产、资产、AI核心 + 更多 + 系统。
+- 系统中心“检查在线更新”不再是占位：直接读取 GitHub main 分支 `core/version.py` 对比版本号，网络失败时明确提示“未确认是否有更新”，不会误报“已是最新”。
+- 发现新版本时弹出确认框，确认后自动下载 main 分支 ZIP，复用原有 ZIP 校验（路径穿越、符号链接、main.py + core/ 结构）与升级执行器，自动备份代码、不覆盖 data / projects / output，升级后自动重启；不做开机自动升级，不经确认不升级。
+- 40.411 本身需最后一次手动安装，之后版本方可一键升级；导入 ZIP 升级包仍保留为备用方式。

@@ -1,4 +1,4 @@
 APP_NAME="SciCloud AGI V40"
 PRODUCT_NAME="SciCloud AGI V40 · AI内容导演操作系统"
-VERSION="40.410.0"
-CODENAME="Script Asset Extraction & Selective Shot Recovery"
+VERSION="40.411.0"
+CODENAME="Modern Tech Theme & One-Click Upgrade"
