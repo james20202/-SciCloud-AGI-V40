@@ -30,7 +30,7 @@ def test_invalid_scan_thresholds_fail_closed_before_running_ffprobe(tmp_path, pa
         calls.append(command)
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "format": {"duration": "10"},
-            "streams": [{"codec_type": "video"}],
+            "streams": [{"codec_type": "video"}, {"codec_type": "audio"}],
         }), stderr="")
 
     engine = MediaQualityEngine(runner=runner, which=lambda name: "/usr/bin/" + name)
