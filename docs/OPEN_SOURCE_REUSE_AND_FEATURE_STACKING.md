@@ -137,3 +137,12 @@ Final edit QC now checks the actual probed media stream metadata. If the workflo
 - Manifest creation rejects empty batches, duplicate shot IDs, missing visual prompts, invalid shot durations, and unsafe output path components. Duration mismatch is reported rather than silently stretched.
 - This is the persistence/contract layer only: the current ComfyUI adapter still renders the configured workflow as one submission. Shot-by-shot queue execution and aggregation remain a separate next step; the manifest must not be mistaken for completed media.
 
+## Resumable per-shot ComfyUI execution (opt-in)
+
+- The video task can set `shot_batch_enabled: true` to execute each manifest job as a separate local ComfyUI submission.
+- `shot_param_bindings` maps canonical shot fields (`prompt`, `visual_prompt`, `duration_seconds`, `shot_id`) to declared scalar parameters in the selected workflow manifest. The default remains the legacy single-submission path.
+- Each shot is required to produce exactly one non-empty video file; images, audio-only outputs, ambiguous multiple videos, and missing outputs fail that shot.
+- The batch runner atomically checkpoints each job, tracks attempt count and error, skips still-valid completed outputs on resume, and only retries failed jobs when `retry_failed_shots: true` is explicitly set.
+- Output paths are confined under the project `output/shots` directory. The batch manifest is stored under `execution/<workflow-id>/` for inspection and recovery.
+- This orchestration is opt-in and depends on a registered workflow whose parameter bindings are configured correctly. It has not yet been validated against a live ComfyUI installation on the user's Mac.
+
