@@ -310,10 +310,21 @@ class ExecutionEngine:
                     'output_path',
                     os.path.join(PROJECT_DIR,'output','voice',safe_wid,f'{safe_tid}.wav')
                 )
+            inferred_bindings = {}
             batch_requested = (
                 task.get('shot_batch_enabled') is True
                 or (isinstance(task.get('shot_param_bindings'), dict) and bool(task.get('shot_param_bindings')))
             )
+            if (task.get('type') == 'video' and model.get('adapter') == 'comfyui'
+                    and not batch_requested
+                    and callable(getattr(adapter, 'infer_shot_param_bindings', None))):
+                inference = adapter.infer_shot_param_bindings(task, context)
+                if isinstance(inference, dict) and inference.get('success') is True:
+                    inferred_bindings = inference.get('bindings') or {}
+                    if isinstance(inferred_bindings, dict) and inferred_bindings.get('prompt'):
+                        batch_requested = True
+                        task['shot_batch_auto_inferred'] = True
+                        task['shot_param_bindings'] = dict(inferred_bindings)
             if (task.get('type') == 'video' and model.get('adapter') == 'comfyui'
                     and batch_requested
                     and callable(getattr(adapter, 'render', None))):
@@ -341,7 +352,7 @@ class ExecutionEngine:
                     batch['workflow_registry_id']=task['workflow_registry_id']
                 if task.get('workflow_capability'):
                     batch['workflow_capability']=task['workflow_capability']
-                bindings=task.get('shot_param_bindings') or {}
+                bindings=task.get('shot_param_bindings') or inferred_bindings or {}
                 if not isinstance(bindings,dict) or any(
                     key not in {'prompt','visual_prompt','duration_seconds','shot_id'} or not isinstance(value,str) or not value
                     for key,value in bindings.items()
