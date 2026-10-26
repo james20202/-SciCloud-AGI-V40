@@ -219,7 +219,7 @@ class ExecutionEngine:
                         'target_duration_seconds':target_duration,
                         'actual_duration_seconds':actual_duration,
                         'delta_seconds':round(actual_duration-target_duration,3) if target_duration is not None else None,
-                        'within_target_tolerance':abs(actual_duration-target_duration)<=max(1.0,target_duration*0.02) if target_duration is not None else None,
+                        'within_target_tolerance':abs(actual_duration-target_duration)<=max(0.1,target_duration*0.005) if target_duration is not None else None,
                         'shot_count':len(records),
                         'shot_durations_seconds':[round(float(item.get('duration',0) or 0),3) for item in records],
                     }
