@@ -13,6 +13,7 @@ from core.motion_graphics_engine import motion_graphics_engine
 from core.shot_contract import normalize_shot, build_shot_manifest
 from core.audio_timeline import build_audio_timeline, build_narration_script, render_srt
 from core.episode_package import build_episode_package
+from core.episode_render_engine import build_episode_edit_command
 
 ADAPTERS={'ffmpeg':FFmpegAdapter(),'comfyui':ComfyUIAdapter(),'tts_command':TTSCommandAdapter()}
 TASK_TO_SKILL={'story':'SKILL-STORY','character':'SKILL-STORY','scene':'SKILL-STORY','storyboard':'SKILL-STORY','prompt':'SKILL-PROMPT','image':'SKILL-IMAGE','video':'SKILL-VIDEO','voice':'SKILL-TTS','sound':'SKILL-SOUND','edit':'SKILL-EDIT','qc':'SKILL-QC','title_card':'SKILL-EDIT','motion_graphics':'SKILL-EDIT','publish':'SKILL-EDIT'}
@@ -269,6 +270,19 @@ class ExecutionEngine:
             adapter_task=task
             safe_wid=re.sub(r'[^A-Za-z0-9_-]+','_',str(wid)).strip('_') or 'workflow'
             safe_tid=re.sub(r'[^A-Za-z0-9_-]+','_',str(task_id)).strip('_') or 'task'
+            if task.get('type') == 'edit' and model.get('adapter') == 'ffmpeg' and not task.get('command'):
+                adapter_task=dict(task)
+                output_path=task.get('output_path') or os.path.join(
+                    PROJECT_DIR,'output','episodes',safe_wid,f'{safe_tid}.mp4'
+                )
+                edit_plan=build_episode_edit_command(
+                    wf,
+                    output_path,
+                    ffmpeg=model.get('command') or 'ffmpeg',
+                )
+                adapter_task['command']=edit_plan['command']
+                context['command']=edit_plan['command']
+                context['edit_plan']={key:value for key,value in edit_plan.items() if key != 'command'}
             if task.get('type') == 'voice' and model.get('adapter') == 'tts_command':
                 # Build one narration script from the canonical storyboard while keeping
                 # the persisted workflow task backward-compatible.
