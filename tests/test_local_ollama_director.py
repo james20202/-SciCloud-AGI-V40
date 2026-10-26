@@ -41,16 +41,19 @@ def test_local_ollama_enriches_text_without_changing_ids_or_timing(monkeypatch):
     assert plan["shots"][1]["dialogue"] == "来吧。"
 
 
-def test_invalid_ollama_response_falls_back_without_partial_mutation(monkeypatch):
+def test_invalid_ollama_response_uses_complete_deterministic_fallback(monkeypatch):
     engine = LocalOllamaDirector()
     monkeypatch.setattr(engine, "_installed_model", lambda: "qwen2.5:3b")
     malformed = {"logline": "不应被写入", "hook": "不应被写入", "shot_items": [{"id": "WRONG-ID"}]}
     monkeypatch.setattr(engine, "_request_json", lambda url, payload=None, timeout=3: {"response": json.dumps(malformed)})
     plan = sample_plan()
-    before = copy.deepcopy(plan)
     status = engine.enrich_plan(plan)
     assert status["mode"] == "deterministic_fallback"
-    assert plan == before
+    assert plan["story"]["logline"] == "原始梗概"
+    assert all("不应被写入" not in shot.get("visual_prompt", "") for shot in plan["shots"])
+    assert all(shot.get("director_note") for shot in plan["shots"])
+    assert all("原始动作" not in shot.get("action", "") for shot in plan["shots"])
+    assert status["shot_count"] == 2
 
 
 def test_missing_ollama_model_returns_clear_fallback(monkeypatch):
@@ -133,4 +136,36 @@ def test_local_ollama_later_batch_failure_does_not_partially_mutate_plan(monkeyp
 
     assert result["mode"] == "deterministic_fallback"
     assert calls == 2
-    assert plan == before
+    assert plan["story"]["logline"] == before["story"]["logline"]
+    assert all("不应写入" not in shot.get("visual_prompt", "") for shot in plan["shots"])
+    assert all(shot.get("director_note") for shot in plan["shots"])
+    assert all("原始动作" not in shot.get("action", "") for shot in plan["shots"])
+    assert result["shot_count"] == 25
+
+
+def test_missing_ollama_replaces_generic_plan_prompts_with_shot_specific_visuals(monkeypatch):
+    engine = LocalOllamaDirector()
+    monkeypatch.setattr(engine, "_installed_model", lambda: None)
+    plan = sample_plan()
+    plan["intent"]["aspect_ratio"] = "9:16"
+    plan["shots"] = [
+        {"id": "SHOT-1", "index": 1, "duration": 5, "type": "Hook特写",
+         "scene_id": "SCENE-1", "visual_prompt": "玄幻修仙；镜头1，电影级构图，9:16画幅，画面连续且人物一致",
+         "action": "推动剧情并强化镜头信息"},
+        {"id": "SHOT-2", "index": 2, "duration": 5, "type": "悬念收尾",
+         "scene_id": "SCENE-1", "visual_prompt": "玄幻修仙；镜头2，电影级构图，9:16画幅，画面连续且人物一致",
+         "action": "推动剧情并强化镜头信息"},
+    ]
+
+    result = engine.enrich_plan(plan)
+
+    first, last = plan["shots"]
+    assert result["mode"] == "deterministic_fallback"
+    assert result["shot_count"] == 2
+    assert first["visual_prompt"] != last["visual_prompt"]
+    assert "人物：主角，原始人物" in first["visual_prompt"]
+    assert "场景：山门" in first["visual_prompt"]
+    assert "9:16画幅" in first["visual_prompt"]
+    assert "悬念收尾" in last["visual_prompt"]
+    assert first["director_note"]
+    assert [shot["duration"] for shot in plan["shots"]] == [5, 5]

@@ -31,15 +31,91 @@ class LocalOllamaDirector:
     def _text(value):
         return value.strip() if isinstance(value,str) else ''
 
+    def _fallback_enrich_plan(self, plan, reason):
+        """Create usable, varied shot descriptions when local inference is unavailable."""
+        if not isinstance(plan, dict):
+            return {'mode':'deterministic_fallback','provider':'local_ollama','model':self.model,
+                    'shot_count':0,'message':str(reason)}
+        shots=plan.get('shots')
+        if not isinstance(shots,list) or not shots:
+            return {'mode':'deterministic_fallback','provider':'local_ollama','model':self.model,
+                    'shot_count':0,'message':str(reason)}
+        intent=plan.get('intent') if isinstance(plan.get('intent'),dict) else {}
+        genre=str(intent.get('genre') or '原创短剧')
+        ratio=str(intent.get('aspect_ratio') or '9:16')
+        idea=str(plan.get('idea') or '核心剧情')
+        hook=str(intent.get('hook') or '')
+        scenes={item.get('id'):item for item in plan.get('scenes',[])
+                if isinstance(item,dict) and item.get('id')}
+        characters=[item for item in plan.get('characters',[]) if isinstance(item,dict)]
+        beats={
+            'Hook特写':('以异常细节抓住观众视线','极近景呈现最关键的异常细节，背景压暗，主体纹理清晰，形成开场悬念'),
+            '环境建立':('建立空间与气氛','先展示环境纵深、天气、主光方向与前景遮挡，明确人物所在空间和危险来源'),
+            '人物进入':('交代人物与行动目标','人物从画面边缘进入并朝目标移动，服装轮廓与标志性道具清楚，保持轴线连续'),
+            '异常发现':('让人物发现关键异常','通过人物视线、手部动作和异常物体形成明确视觉引导，异常细节必须可辨认'),
+            '冲突升级':('强化对抗与压迫感','用前后景关系和低机位强化力量差，动作方向清晰，环境反馈体现冲突升级'),
+            '核心动作':('呈现关键动作结果','完整展示动作起势、接触点和结果，主体不出框，运动方向与上一镜头一致'),
+            '反转信息':('揭示与前文不同的信息','将关键线索置于视觉中心，以人物反应和线索特写共同表达反转，不额外引入无关角色'),
+            '悬念收尾':('留下未解问题','主体停在决定性瞬间，保留明确的视觉线索和未完成动作，构图留出压迫性的负空间'),
+        }
+        updated=0
+        for index,shot in enumerate(shots,1):
+            if not isinstance(shot,dict):
+                continue
+            shot_type=str(shot.get('type') or list(beats)[(index-1)%len(beats)])
+            beat,visual=beats.get(shot_type,('推进剧情并交代信息','用清楚的主体动作和空间关系推进剧情，保证画面可读'))
+            scene=scenes.get(shot.get('scene_id'),{})
+            scene_name=str(scene.get('name') or '核心故事场景')
+            scene_purpose=str(scene.get('purpose') or '')
+            assigned=shot.get('character_ids')
+            if isinstance(assigned,list) and assigned:
+                selected=[item for item in characters if item.get('id') in assigned]
+            else:
+                selected=characters[:1]
+            character_text='、'.join(str(item.get('name') or '角色') for item in selected) or '主角'
+            character_desc='；'.join('，'.join(str(item.get(key)) for key in ('name','description','costume') if item.get(key)) for item in selected)
+            action=str(shot.get('action') or '').strip()
+            generic_actions={'推动剧情并强化镜头信息','剧情动作','原始动作'}
+            if not action or action in generic_actions or action.startswith('原始动作'):
+                action=f'{character_text}执行“{beat}”的具体动作，动作目标与结果清晰可见'
+                shot['action']=action
+            existing=str(shot.get('visual_prompt') or shot.get('prompt') or '').strip()
+            generic_markers=('电影级构图','画面连续且人物一致','核心故事场景')
+            is_generic=not existing or (('镜头' in existing) and any(marker in existing for marker in generic_markers))
+            if is_generic:
+                parts=[
+                    f'{genre}题材，{ratio}画幅',
+                    f'剧情核心：{idea}',
+                    f'场景：{scene_name}' + (f'，场景目的：{scene_purpose}' if scene_purpose else ''),
+                    f'人物：{character_desc or character_text}',
+                    f'镜头任务：{shot_type}，{beat}',
+                    f'画面内容：{visual}',
+                    f'具体动作：{action}',
+                    '电影级布光，主体轮廓清晰，前中后景分离，材质细节可见',
+                    '保持人物面部、发型、服装、道具和屏幕方向与相邻镜头一致',
+                ]
+                if index==1 and hook:
+                    parts.insert(2,f'开场钩子：{hook}')
+                shot['visual_prompt']='；'.join(parts)
+                shot['prompt']=shot['visual_prompt']
+            if not str(shot.get('director_note') or '').strip():
+                shot['director_note']=f'连续性检查：{character_text}外观与道具保持一致；镜头目的为{beat}。'
+            updated+=1
+        return {
+            'mode':'deterministic_fallback','provider':'local_ollama','model':self.model,
+            'shot_count':updated,
+            'message':f'本地模型不可用或输出校验失败，已为 {updated} 个镜头生成规则化分镜提示词；对白不会伪造。原因：{reason}'
+        }
+
     def enrich_plan(self, plan):
         """Enrich every shot in bounded batches; commit text changes only if all batches validate."""
         try:
             model=self._installed_model()
             if not model:
-                return {'mode':'deterministic_fallback','provider':'local_ollama','model':self.model,'message':'本地 Ollama 未运行或未找到指定模型'}
+                return self._fallback_enrich_plan(plan, '本地 Ollama 未运行或未找到指定模型')
             shots=plan.get('shots',[])
             if not isinstance(shots,list) or not shots:
-                return {'mode':'deterministic_fallback','provider':'local_ollama','model':self.model,'message':'导演计划没有可优化的镜头'}
+                return self._fallback_enrich_plan(plan, '导演计划没有可优化的镜头')
             batch_size=24
             batches=[shots[i:i+batch_size] for i in range(0,len(shots),batch_size)]
             all_shot_updates={}
@@ -125,6 +201,6 @@ class LocalOllamaDirector:
                 'shot_count':len(all_shot_updates),'batch_count':len(batches)
             }
         except Exception as exc:
-            return {'mode':'deterministic_fallback','provider':'local_ollama','model':self.model,'message':f'本地模型不可用或返回无效结果：{exc}'}
+            return self._fallback_enrich_plan(plan, f'本地模型不可用或返回无效结果：{exc}')
 
 local_ollama_director=LocalOllamaDirector()
