@@ -7,6 +7,7 @@ from core.prompt_engine import prompt_engine
 from core.director_plan import director_plan_engine
 from core.continuity_engine import continuity_engine
 from core.shot_contract import normalize_shot, normalize_shots
+from core.plan_validation import validate_storyboard_or_raise
 
 STORYBOARD_DIR = os.path.join(PROJECT_DIR, 'storyboards')
 os.makedirs(STORYBOARD_DIR, exist_ok=True)
@@ -97,6 +98,10 @@ class StoryboardDirector:
             }
             # Normalize at the storyboard boundary while preserving legacy fields.
             shots.append(normalize_shot(shot, i))
+        # Refs and prompts are checked on the derived shots (scene and
+        # character ids are now filled in), before the storyboard is
+        # saved. The duration-sum check below stays as the backstop.
+        validate_storyboard_or_raise({'shots': shots}, plan)
         intent = plan.get('intent', {})
         if isinstance(intent, dict):
             target_raw = intent.get('duration_seconds', intent.get('target_duration_seconds'))

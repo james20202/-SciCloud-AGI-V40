@@ -3,6 +3,7 @@ from datetime import datetime
 from uuid import uuid4
 from core.config import PROJECT_DIR
 from core.local_ollama_director import local_ollama_director
+from core.plan_validation import validate_plan_or_raise
 
 class DirectorPlanEngine:
     def __init__(self, project_dir=PROJECT_DIR):
@@ -53,6 +54,14 @@ class DirectorPlanEngine:
             "status": "planned"
         }
         plan['generation'] = local_ollama_director.enrich_plan(plan)
+        # Fail at plan time, before saving: a plan with a dangling scene /
+        # character ref, an empty prompt, or a duration sum that does not
+        # match the target must not reach the workflow queue or shot 9.
+        # The generation dict above already records WHY a rule fallback
+        # was used (generation['diagnosis']), so a failed validation here
+        # does not hide an Ollama problem behind a saved plan.
+        validate_plan_or_raise(plan)
+        plan['plan_validation'] = {'passed': True, 'errors': []}
         self.save_plan(plan)
         return plan
 

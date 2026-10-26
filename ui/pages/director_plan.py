@@ -80,7 +80,14 @@ class DirectorPlanPage(QWidget):
             QMessageBox.warning(self,'导演计划校验失败',str(exc)); return
         self.plan=plan
         generation=plan.get('generation',{})
-        mode='本地 Ollama' if generation.get('mode')=='local_ollama' else '本地规则兜底'
+        if generation.get('mode')=='local_ollama':
+            mode='本地 Ollama'
+        else:
+            # Show WHY the rule fallback was used, not just that it was:
+            # ollama_not_running / model_not_loaded / invalid_json /
+            # invalid_schema / ollama_error. Full detail stays in tooltip.
+            diagnosis=generation.get('diagnosis') or ''
+            mode='本地规则兜底' + (f'（{diagnosis}）' if diagnosis else '')
         self.summary.setText(f"{plan.get('title','未命名项目')}  ·  {plan['intent'].get('genre','原创短剧')}  ·  {len(plan['shots'])} 个镜头  ·  {len(plan['tasks'])} 个生产任务  ·  {sum(float(s.get('duration',0)) for s in plan['shots']):g} 秒  ·  {mode}")
         self.summary.setToolTip(generation.get('message','导演计划已生成'))
         self.tasks.clear()
