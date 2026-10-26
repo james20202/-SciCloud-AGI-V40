@@ -23,6 +23,10 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
     """Write a stable, inspectable timeline with real/fallback media provenance."""
     if not isinstance(episode, dict):
         raise ValueError("episode 必须是对象")
+    if not isinstance(output_path, str) or not output_path.strip():
+        raise ValueError("output_path 必须是非空路径")
+    if shot_job is not None and not isinstance(shot_job, dict):
+        raise ValueError("shot_job 必须是对象")
     if not isinstance(clip_records, list) or not clip_records:
         raise ValueError("时间轴必须至少包含一个镜头媒体记录")
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -54,7 +58,7 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
         if not shot_id or shot_id in seen_shot_ids:
             raise ValueError(f"镜头 ID 为空或重复：{shot_id or '(empty)'}")
         seen_shot_ids.add(shot_id)
-        scene_id = str(record.get("scene_id") or (record.get("spec") or {}).get("scene_id") or "")
+        scene_id = str(record.get("scene_id") or spec.get("scene_id") or "")
         clip = {
             "item_type": "clip",
             "clip_id": f"{shot_id}_picture",
@@ -92,7 +96,24 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
 
     audio_children = []
     shots = (shot_job or {}).get("shots", [])
-    by_id = {str(s.get("shot_id")): s for s in shots}
+    if not isinstance(shots, list):
+        raise ValueError("shot_job.shots 必须是列表")
+    by_id = {}
+    for index, shot in enumerate(shots, 1):
+        if not isinstance(shot, dict):
+            raise ValueError(f"shot_job 第 {index} 个镜头必须是对象")
+        shot_id = shot.get("shot_id")
+        if shot_id is None or not str(shot_id).strip():
+            raise ValueError(f"shot_job 第 {index} 个镜头缺少 shot_id")
+        key = str(shot_id)
+        if key in by_id:
+            raise ValueError(f"shot_job 镜头 ID 重复：{key}")
+        artifacts = shot.get("artifacts", [])
+        if not isinstance(artifacts, list):
+            raise ValueError(f"镜头 {key} artifacts 必须是列表")
+        if any(not isinstance(item, dict) for item in artifacts):
+            raise ValueError(f"镜头 {key} artifacts 中包含非对象记录")
+        by_id[key] = shot
     for clip in picture:
         shot = by_id.get(clip["shot_id"], {})
         for artifact in shot.get("artifacts", []):
