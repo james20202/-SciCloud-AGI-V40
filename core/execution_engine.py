@@ -11,7 +11,7 @@ from core.storyboard_engine import storyboard_director
 from core.qc_engine import qc_engine
 from core.motion_graphics_engine import motion_graphics_engine
 from core.shot_contract import normalize_shot, build_shot_manifest
-from core.audio_timeline import build_audio_timeline, render_srt
+from core.audio_timeline import build_audio_timeline, build_narration_script, render_srt
 from core.episode_package import build_episode_package
 
 ADAPTERS={'ffmpeg':FFmpegAdapter(),'comfyui':ComfyUIAdapter(),'tts_command':TTSCommandAdapter()}
@@ -279,16 +279,7 @@ class ExecutionEngine:
                     storyboard=storyboard_director.load(storyboard_id) if storyboard_id else None
                     if not storyboard or not isinstance(storyboard.get('shots'),list):
                         raise RuntimeError('配音任务缺少可用分镜，无法提取对白/旁白')
-                    lines=[]
-                    for shot in storyboard['shots']:
-                        if not isinstance(shot,dict):
-                            continue
-                        dialogue=shot.get('dialogue')
-                        voiceover=shot.get('voiceover')
-                        line=dialogue.strip() if isinstance(dialogue,str) and dialogue.strip() else (voiceover.strip() if isinstance(voiceover,str) else '')
-                        if line:
-                            lines.append(line)
-                    text_input='\n'.join(lines)
+                    text_input=build_narration_script(storyboard['shots'])
                 if not isinstance(text_input,str) or not text_input.strip():
                     raise RuntimeError('分镜中没有可用于配音的对白或旁白；请先补充台词')
                 adapter_task['text']=text_input
