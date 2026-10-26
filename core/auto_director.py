@@ -34,7 +34,19 @@ class AutoDirector:
             task=ready[0]
             started=datetime.now().isoformat(timespec='seconds')
             self._log(wid,{'event':'task_start','task_id':task['id'],'type':task.get('type'),'at':started})
-            result=self.executor.execute(wid,task['id'])
+            try:
+                result=self.executor.execute(wid,task['id'])
+                if not isinstance(result,dict):
+                    result={'success':False,'message':'执行器返回了无效结果'}
+            except Exception as exc:
+                message=f'执行任务发生未捕获异常：{type(exc).__name__}: {exc}'
+                # If an executor crashes after marking a task running, transition it
+                # to failed so the UI does not show a permanent spinner and retry works.
+                try:
+                    self.engine.fail_task(wid,task['id'],message)
+                except Exception as state_exc:
+                    message += f'；任务状态回写失败：{type(state_exc).__name__}: {state_exc}'
+                result={'success':False,'message':message,'exception_type':type(exc).__name__,'recoverable':True}
             results.append({'task_id':task['id'],'result':result})
             self._log(wid,{'event':'task_finish','task_id':task['id'],'success':result.get('success',False),'message':result.get('message',''),'at':datetime.now().isoformat(timespec='seconds')})
             steps+=1
