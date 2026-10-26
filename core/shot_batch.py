@@ -65,6 +65,10 @@ def build_shot_batch_manifest(
             "attempt": 0,
             "outputs": [],
         })
+    job_ids = [job["job_id"] for job in jobs]
+    output_paths = [job["output_path"] for job in jobs]
+    if len(job_ids) != len(set(job_ids)) or len(output_paths) != len(set(output_paths)):
+        raise ValueError("镜头 ID 清理后发生任务 ID 或输出路径冲突，请修改原始 shot_id")
     return {
         "schema_version": 1,
         "workflow_id": workflow_id,
