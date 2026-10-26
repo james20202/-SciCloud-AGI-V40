@@ -120,7 +120,7 @@ When an `edit` task uses the existing FFmpeg adapter and has no custom command, 
 - orders available title-card video before generated video clips and concatenates them in portrait 1080×1920 at 24 fps;
 - mixes verified voice and sound/music files into an AAC stereo track;
 - includes the prompt artifact's SRT draft as an MP4 `mov_text` subtitle stream when one exists;
-- applies the director's target duration and writes a final MP4 under the project output directory;
+- pads a short concatenated video with a cloned final frame, then trims the video stream to the director's target duration; the audio mix is also trimmed/padded to target duration, and the final MP4 is written under the project output directory;
 - refuses to start when video, audio, or a valid duration target is missing.
 
 The existing FFmpeg adapter still verifies the final output is a non-empty file, and final QC probes the actual duration/streams. This is a first-pass assembly stage: it does not synthesize missing shots, perform word-level subtitle alignment, or guarantee that the upstream ComfyUI workflow generated every planned shot. Custom edit commands remain supported.
@@ -147,5 +147,5 @@ Final edit QC now checks the actual probed media stream metadata. If the workflo
 - Each shot is required to produce exactly one non-empty video file; images, audio-only outputs, ambiguous multiple videos, and missing outputs fail that shot.
 - The batch runner atomically checkpoints each job, tracks attempt count and error, skips still-valid completed outputs on resume, and only retries failed jobs when `retry_failed_shots: true` is explicitly set.
 - Output paths are confined under the project `output/shots` directory. The batch manifest is stored under `execution/<workflow-id>/` for inspection and recovery.
-- This orchestration uses explicit configuration when supplied and otherwise attempts conservative inference from a registered workflow. A live ComfyUI installation on the user's Mac is still required to validate actual rendering end to end.
+- This orchestration uses explicit configuration when supplied and otherwise attempts conservative inference from exact, known prompt parameter names in a registered workflow; it does not guess arbitrary custom parameter names. Final assembly can hold the last video frame when upstream clips are shorter than the target, so QC should be used to review the result rather than treating padding as new generated footage. A live ComfyUI installation on the user's Mac is still required to validate actual rendering end to end.
 
