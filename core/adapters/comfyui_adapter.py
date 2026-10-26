@@ -87,6 +87,60 @@ class ComfyUIAdapter(BaseAdapter):
             return None, 'ComfyUI 任务缺少 API 格式 workflow JSON，未执行。'
         return workflow, None
 
+    def preflight_shot_batch(self, task, bindings, context=None):
+        """Validate a per-shot task against its registered manifest before any render starts."""
+        context = context or {}
+        if not isinstance(task, dict) or not isinstance(bindings, dict):
+            return {"success": False, "message": "逐镜头预检查需要有效 task 和 bindings 对象。"}
+        manifest = task.get("workflow_manifest") or context.get("workflow_manifest")
+        registry_id = task.get("workflow_registry_id") or context.get("workflow_registry_id")
+        registry = WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR)
+        try:
+            if manifest is None and registry_id:
+                manifest = registry.get(registry_id)
+            if manifest is None:
+                requested = task.get("workflow_capability") or context.get("workflow_capability") or "video.image2video"
+                matches = [item for item in registry.list() if item.get("capability") == requested]
+                if len(matches) == 1:
+                    manifest = matches[0]
+                elif len(matches) > 1:
+                    return {"success": False, "message": f"能力 {requested} 匹配到 {len(matches)} 个工作流，请指定 workflow_registry_id。"}
+                else:
+                    return {"success": False, "message": f"没有找到能力为 {requested} 的已登记工作流；逐镜头模式需要参数清单。"}
+            capability = manifest.get("capability")
+            if capability not in {"video.text2video", "video.image2video", "video.reference2video"}:
+                return {"success": False, "message": f"逐镜头视频任务不能使用工作流能力：{capability}"}
+            declared = {item.get("name") for item in manifest.get("params", []) if isinstance(item, dict)}
+            base_params = task.get("workflow_params") or {}
+            if not isinstance(base_params, dict):
+                return {"success": False, "message": "workflow_params 必须是对象。"}
+            unknown_base = set(base_params) - declared
+            if unknown_base:
+                return {"success": False, "message": "workflow_params 含未声明参数：" + ", ".join(sorted(unknown_base))}
+            for field, parameter in bindings.items():
+                if field not in {"prompt", "visual_prompt", "duration_seconds", "shot_id"}:
+                    return {"success": False, "message": f"不支持的镜头字段映射：{field}"}
+                if not isinstance(parameter, str) or not parameter:
+                    return {"success": False, "message": f"镜头字段 {field} 的参数名无效"}
+                if parameter not in declared:
+                    return {"success": False, "message": f"镜头字段 {field} 映射到未声明参数：{parameter}"}
+            # Compile once before launching the batch to validate graph structure,
+            # asset references, and the static parameters for every upcoming shot.
+            compile_workflow(
+                manifest,
+                params=base_params,
+                assets=task.get("workflow_assets") or context.get("workflow_assets") or {},
+            )
+            return {
+                "success": True,
+                "workflow_id": manifest.get("id"),
+                "capability": capability,
+                "declared_params": sorted(declared),
+                "shot_bindings": dict(bindings),
+            }
+        except (WorkflowManifestError, TypeError, ValueError) as exc:
+            return {"success": False, "message": f"逐镜头工作流预检查失败：{exc}"}
+
     def execute(self, model, task, context):
         workflow, error = self._workflow(task, context)
         if error:
