@@ -60,3 +60,41 @@ def test_tts_adapter_rejects_missing_executable(tmp_path):
 
     assert result.success is False
     assert "找不到 TTS 可执行文件" in result.message
+
+def test_tts_adapter_binds_story_text_and_output_placeholders(tmp_path):
+    output = tmp_path / "narration.wav"
+    command = [
+        sys.executable,
+        "-c",
+        "import pathlib,sys; pathlib.Path(sys.argv[1]).write_bytes(sys.argv[2].encode())",
+        "{output}",
+        "{text}",
+    ]
+
+    result = TTSCommandAdapter().execute(
+        {},
+        {"command": command, "output_path": str(output), "text": "主角：剑来！"},
+        {},
+    )
+
+    assert result.success is True
+    assert output.read_text(encoding="utf-8") == "主角：剑来！"
+
+
+def test_tts_adapter_rejects_text_when_command_has_no_text_placeholder(tmp_path):
+    output = tmp_path / "narration.wav"
+    command = [
+        sys.executable,
+        "-c",
+        "import pathlib,sys; pathlib.Path(sys.argv[-1]).write_bytes(b'audio')",
+    ]
+
+    result = TTSCommandAdapter().execute(
+        {},
+        {"command": command, "output_path": str(output), "text": "需要朗读的内容"},
+        {},
+    )
+
+    assert result.success is False
+    assert "{text}" in result.message
+
