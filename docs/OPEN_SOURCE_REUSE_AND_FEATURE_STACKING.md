@@ -89,3 +89,15 @@ No extra runtime dependency, model download, or new database is required. A draf
 ## Production QC: target-duration gate
 
 The prompt-stage artifact records both the sum of planned shot durations and the requested episode duration. QC verifies that the reported actual duration matches the canonical shot sum and that the shot sum is within the target tolerance (max of 1 second or 2% of target). A large mismatch, such as a 30-second shot plan for a 60-second target, fails the prompt-contract check rather than allowing a structurally valid but undersized episode to proceed unnoticed. This is planned-timeline validation; it does not claim that rendered media or voice audio has the same duration until the media QC stage probes actual files.
+
+## ComfyUI workflow registry execution (2026-10-26)
+
+The registry pattern is now wired into the existing `ComfyUIAdapter`; SciCloud does not import a second orchestration runtime.
+
+- A task can select a saved manifest with `workflow_registry_id`; `workflow_params` and `workflow_assets` are bound through the existing manifest compiler.
+- Built-in manifests live under `data/comfyui_workflows/builtin/`; user overrides/imports live under `data/comfyui_workflows/user/`. A user manifest with the same ID overrides the built-in one.
+- Inline `workflow_manifest` and legacy API `workflow` JSON remain supported for backward compatibility.
+- Missing registry IDs and invalid manifests return actionable errors before submitting a ComfyUI job.
+- Tests cover registry selection, parameter/asset binding, missing workflow behavior, and legacy manifest compilation.
+
+For upstream video templates, prefer the official [Comfy-Org workflow templates](https://github.com/Comfy-Org/workflow_templates) as versioned starting points. Wan 2.2 includes 5B and 14B video workflows, but those weights are not assumed suitable for an 8 GB M1; the adapter does not download models or silently change providers. A real render still requires a compatible local ComfyUI installation, matching nodes, and model files.
