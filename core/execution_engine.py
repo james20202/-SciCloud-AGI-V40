@@ -358,12 +358,6 @@ class ExecutionEngine:
                     for key,value in bindings.items()
                 ):
                     raise RuntimeError('shot_param_bindings 仅支持 prompt、visual_prompt、duration_seconds、shot_id 到已声明参数名的映射')
-                bindings=task.get('shot_param_bindings') or inferred_bindings or {}
-                if not isinstance(bindings,dict) or any(
-                    key not in {'prompt','visual_prompt','duration_seconds','shot_id'} or not isinstance(value,str) or not value
-                    for key,value in bindings.items()
-                ):
-                    raise RuntimeError('shot_param_bindings 仅支持 prompt、visual_prompt、duration_seconds、shot_id 到已声明参数名的映射')
                 base_params=task.get('workflow_params') or {}
                 if not isinstance(base_params,dict):
                     raise RuntimeError('workflow_params 必须是对象')
