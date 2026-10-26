@@ -16,7 +16,7 @@ class ShotProductionEngine:
     """Resumable shot coordinator; completed outputs are reused only if valid."""
     def __init__(self):
         self.root=os.path.join(PROJECT_DIR,'shot_runs'); os.makedirs(self.root,exist_ok=True)
-    def _now(self): return datetime.now().isoformat(timespec='seconds')
+    def _now(self): return datetime.now().isoformat(timespec='microseconds')
     def _path(self, run_id):
         if not isinstance(run_id, str) or not run_id.strip() or run_id in {'.', '..'}:
             raise ValueError('run_id 无效')
@@ -80,11 +80,29 @@ class ShotProductionEngine:
             data['shots'].append({'shot_id':sid,'index':i,'spec':spec,'input_fingerprint':shot_fingerprint(spec),'status':'ready','attempts':0,'artifacts':[],'last_result':None})
         return self._save(data)
     def load(self, run_id):
+        # SQLite is the normal durable store, but a process can stop between
+        # writing the JSON snapshot and committing the SQLite update. Compare
+        # both copies so recovery never silently prefers an older state.
         record = _job_store.get(run_id)
-        data = record.get('result') if isinstance(record, dict) else None
-        if not isinstance(data, dict):
-            with open(self._path(run_id),encoding='utf-8') as f:
-                data = json.load(f)
+        db_data = record.get('result') if isinstance(record, dict) else None
+        file_data = None
+        try:
+            with open(self._path(run_id), encoding='utf-8') as f:
+                candidate = json.load(f)
+            if isinstance(candidate, dict):
+                file_data = candidate
+        except (OSError, ValueError, TypeError):
+            file_data = None
+        if isinstance(db_data, dict) and isinstance(file_data, dict):
+            db_updated = str(db_data.get('updated_at') or '')
+            file_updated = str(file_data.get('updated_at') or '')
+            data = file_data if file_updated > db_updated else db_data
+        elif isinstance(file_data, dict):
+            data = file_data
+        elif isinstance(db_data, dict):
+            data = db_data
+        else:
+            raise FileNotFoundError(f'找不到有效的镜头生产任务记录：{run_id}')
         # SQLite startup recovery marks an interrupted outer task. Re-queue
         # in-flight shots instead of leaving a permanent fake spinner.
         if isinstance(record, dict) and record.get('status') == 'interrupted':
