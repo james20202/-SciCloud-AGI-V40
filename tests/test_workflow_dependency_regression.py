@@ -98,7 +98,7 @@ def test_workflow_carries_director_duration_target_to_edit_task(tmp_path, monkey
     monkeypatch.setattr(
         module.storyboard_director,
         "create_from_plan",
-        lambda plan: {"storyboard_id": "SB-DURATION-TEST", "shots": []},
+        lambda plan: {"storyboard_id": "SB-DURATION-TEST", "shots": [{"shot_id": "SHOT-1", "duration": 5}]},
     )
     engine = WorkflowEngine(project_dir=str(tmp_path))
     workflow = engine.create_from_plan({
@@ -119,7 +119,7 @@ def test_workflow_does_not_overwrite_explicit_edit_duration_target(tmp_path, mon
     monkeypatch.setattr(
         module.storyboard_director,
         "create_from_plan",
-        lambda plan: {"storyboard_id": "SB-DURATION-OVERRIDE", "shots": []},
+        lambda plan: {"storyboard_id": "SB-DURATION-OVERRIDE", "shots": [{"shot_id": "SHOT-1", "duration": 5}]},
     )
     engine = WorkflowEngine(project_dir=str(tmp_path))
     workflow = engine.create_from_plan({
