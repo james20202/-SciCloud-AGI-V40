@@ -105,3 +105,7 @@ For upstream video templates, prefer the official [Comfy-Org workflow templates]
 ### Capability-based workflow selection
 
 ComfyUI media tasks can now set `workflow_capability` instead of embedding an API graph. If exactly one local registered manifest matches, the adapter compiles it with the task's `workflow_params` and `workflow_assets`. Image tasks default to `image.text2image`; video tasks default to `video.image2video`. When multiple manifests match, execution stops with an instruction to select `workflow_registry_id`, avoiding nondeterministic model selection. Existing inline graphs and explicit registry IDs take precedence.
+
+## TTS artifact verification
+
+The command-based TTS adapter now requires an explicit `output_path` or `output_file`, accepts argument arrays or shell-like quoted command strings without invoking a shell, supports an `{output}` placeholder, and only reports success when the target file exists and is non-empty. Non-zero exits, missing executables, timeouts, and empty/missing audio files fail the task. This closes the previous gap where a command could exit successfully without registering any usable audio artifact. Four regression tests cover the output contract and failure cases. The adapter remains provider-neutral; a compatible local TTS command must still be configured by the user.
