@@ -181,3 +181,44 @@ def test_comfyui_adapter_rejects_ambiguous_capability_workflows(tmp_path, monkey
     assert graph is None
     assert "请在任务中指定 workflow_registry_id" in error
 
+
+
+def test_shot_batch_preflight_rejects_duplicate_parameter_bindings(tmp_path, monkeypatch):
+    import core.adapters.comfyui_adapter as adapter_module
+    from core.adapters.comfyui_adapter import ComfyUIAdapter
+    source = manifest()
+    source["graph"]["3"] = {"class_type": "CLIPTextEncode", "inputs": {"text": "default"}}
+    source["params"].append({"name": "positive_prompt", "type": "string", "inject": {"type": "scalar", "to": [["3", "text"]]}})
+    builtin = tmp_path / "builtin"
+    user = tmp_path / "user"
+    builtin.mkdir()
+    user.mkdir()
+    (user / "local-video.json").write_text(json.dumps(source), encoding="utf-8")
+    monkeypatch.setattr(adapter_module, "BUILTIN_WORKFLOW_DIR", str(builtin))
+    monkeypatch.setattr(adapter_module, "USER_WORKFLOW_DIR", str(user))
+    result = ComfyUIAdapter().preflight_shot_batch(
+        {"workflow_registry_id": "local-video", "workflow_assets": {"checkpoint": "local.safetensors"}},
+        {"prompt": "positive_prompt", "visual_prompt": "positive_prompt"}, {})
+    assert result["success"] is False
+    assert "同一个工作流参数" in result["message"]
+
+
+def test_shot_batch_preflight_rejects_unknown_static_params(tmp_path, monkeypatch):
+    import core.adapters.comfyui_adapter as adapter_module
+    from core.adapters.comfyui_adapter import ComfyUIAdapter
+    source = manifest()
+    source["graph"]["3"] = {"class_type": "CLIPTextEncode", "inputs": {"text": "default"}}
+    source["params"].append({"name": "positive_prompt", "type": "string", "inject": {"type": "scalar", "to": [["3", "text"]]}})
+    builtin = tmp_path / "builtin"
+    user = tmp_path / "user"
+    builtin.mkdir()
+    user.mkdir()
+    (user / "local-video.json").write_text(json.dumps(source), encoding="utf-8")
+    monkeypatch.setattr(adapter_module, "BUILTIN_WORKFLOW_DIR", str(builtin))
+    monkeypatch.setattr(adapter_module, "USER_WORKFLOW_DIR", str(user))
+    result = ComfyUIAdapter().preflight_shot_batch(
+        {"workflow_registry_id": "local-video", "workflow_params": {"unknown": 3},
+         "workflow_assets": {"checkpoint": "local.safetensors"}},
+        {"prompt": "positive_prompt"}, {})
+    assert result["success"] is False
+    assert "未声明参数" in result["message"]
