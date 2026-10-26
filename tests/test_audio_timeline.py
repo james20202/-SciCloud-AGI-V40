@@ -1,4 +1,4 @@
-from core.audio_timeline import build_audio_timeline, render_srt
+from core.audio_timeline import build_audio_timeline, build_narration_script, render_srt
 
 
 def test_audio_timeline_preserves_shot_ranges_and_subtitle_text():
@@ -51,3 +51,21 @@ def test_audio_timeline_rejects_malformed_optional_text_contract():
         assert "voiceover 必须是字符串" in str(exc)
     else:
         raise AssertionError("malformed voiceover must be rejected by the canonical shot contract")
+
+def test_narration_script_prefers_dialogue_then_voiceover():
+    script = build_narration_script([
+        {"dialogue": "  你是谁？ ", "voiceover": "不应重复的旁白"},
+        {"dialogue": "", "voiceover": "夜色笼罩山门"},
+        {"dialogue": None, "voiceover": 42},
+    ])
+    assert script == "你是谁？\\n夜色笼罩山门"
+
+
+def test_narration_script_rejects_non_list_shots():
+    try:
+        build_narration_script({"dialogue": "错误结构"})
+    except ValueError as exc:
+        assert "shots 必须是列表" in str(exc)
+    else:
+        raise AssertionError("non-list shots should be rejected")
+
