@@ -28,7 +28,8 @@ class DirectorPlanEngine:
         if ratio not in {"9:16", "16:9", "1:1"}:
             raise ValueError("画幅仅支持 9:16、16:9 或 1:1")
         # Keep sub-second precision supported by _shots(); do not silently round
-        # user-entered targets to whole seconds. The shot plan is quantized to 0.1s.\n        duration = round(duration_value, 1)
+        # user-entered targets to whole seconds. The shot plan is quantized to 0.1s.
+        duration = round(duration_value, 1)
         title = title or self._make_title(idea)
         genre = self._pick(idea, ["中式恐怖","修仙","玄幻","悬疑","推理","灵异","僵尸","科幻","都市情感","都市逆袭"], "原创短剧")
         hook = self._make_hook(idea, genre)
