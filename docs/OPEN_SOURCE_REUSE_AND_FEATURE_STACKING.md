@@ -101,3 +101,7 @@ The registry pattern is now wired into the existing `ComfyUIAdapter`; SciCloud d
 - Tests cover registry selection, parameter/asset binding, missing workflow behavior, and legacy manifest compilation.
 
 For upstream video templates, prefer the official [Comfy-Org workflow templates](https://github.com/Comfy-Org/workflow_templates) as versioned starting points. Wan 2.2 includes 5B and 14B video workflows, but those weights are not assumed suitable for an 8 GB M1; the adapter does not download models or silently change providers. A real render still requires a compatible local ComfyUI installation, matching nodes, and model files.
+
+### Capability-based workflow selection
+
+ComfyUI media tasks can now set `workflow_capability` instead of embedding an API graph. If exactly one local registered manifest matches, the adapter compiles it with the task's `workflow_params` and `workflow_assets`. Image tasks default to `image.text2image`; video tasks default to `video.image2video`. When multiple manifests match, execution stops with an instruction to select `workflow_registry_id`, avoiding nondeterministic model selection. Existing inline graphs and explicit registry IDs take precedence.
