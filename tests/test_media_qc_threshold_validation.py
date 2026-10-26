@@ -49,7 +49,7 @@ def test_valid_scan_thresholds_are_passed_to_ffmpeg(tmp_path):
     def runner(command, **kwargs):
         commands.append(command)
         if command[0] == "ffprobe":
-            payload = {"format": {"duration": "10"}, "streams": [{"codec_type": "video"}]}
+            payload = {"format": {"duration": "10"}, "streams": [{"codec_type": "video"}, {"codec_type": "audio"}]}
             return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
