@@ -41,7 +41,7 @@ class EpisodeEngine:
             'episode_id': eid,
             'title': plan['title'],
             'idea': idea,
-            'duration_seconds': int(duration),
+            'duration_seconds': plan.get('intent', {}).get('duration_seconds', duration),
             'aspect_ratio': ratio,
             'plan_id': plan['plan_id'],
             'workflow_id': wf['workflow_id'],
