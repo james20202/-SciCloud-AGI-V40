@@ -19,7 +19,7 @@ def _number(value, fallback=0.0):
         return float(fallback)
 
 
-def build_episode_timeline(episode, shot_job, clip_records, output_path, final_video=None):
+def build_episode_timeline(episode, shot_job, clip_records, output_path, final_video=None, audio_assets=None):
     """Write a stable, inspectable timeline with real/fallback media provenance."""
     if not isinstance(episode, dict):
         raise ValueError("episode 必须是对象")
@@ -94,40 +94,69 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
                             "path": source, "source_kind": clip["metadata"]["generation"]["source_kind"]})
         cursor += duration
 
+    audio_assets = audio_assets if isinstance(audio_assets, dict) else {}
     audio_children = []
-    shots = (shot_job or {}).get("shots", [])
-    if not isinstance(shots, list):
-        raise ValueError("shot_job.shots 必须是列表")
-    by_id = {}
-    for index, shot in enumerate(shots, 1):
-        if not isinstance(shot, dict):
-            raise ValueError(f"shot_job 第 {index} 个镜头必须是对象")
-        shot_id = shot.get("shot_id")
-        if shot_id is None or not str(shot_id).strip():
-            raise ValueError(f"shot_job 第 {index} 个镜头缺少 shot_id")
-        key = str(shot_id)
-        if key in by_id:
-            raise ValueError(f"shot_job 镜头 ID 重复：{key}")
-        artifacts = shot.get("artifacts", [])
-        if not isinstance(artifacts, list):
-            raise ValueError(f"镜头 {key} artifacts 必须是列表")
-        if any(not isinstance(item, dict) for item in artifacts):
-            raise ValueError(f"镜头 {key} artifacts 中包含非对象记录")
-        by_id[key] = shot
-    for clip in picture:
-        shot = by_id.get(clip["shot_id"], {})
-        for artifact in shot.get("artifacts", []):
-            path = artifact.get("path")
-            if artifact.get("kind") == "audio" and path and os.path.isfile(path) and os.path.getsize(path) > 0:
-                audio_children.append({
-                    "item_type": "clip",
-                    "clip_id": f"{clip['shot_id']}_audio_{len(audio_children)+1}",
-                    "shot_id": clip["shot_id"],
-                    "start_seconds": clip["start_seconds"],
-                    "duration_seconds": clip["duration_seconds"],
-                    "media_reference": {"path": os.path.abspath(path)},
-                    "metadata": {"generation": {"source_kind": "audio_artifact"}},
-                })
+    # Prefer the exact mix that was passed into final assembly. Raw per-shot audio
+    # artifacts are only provenance inputs; exporting them as if they were the final
+    # timeline track would misrepresent what users actually hear.
+    mixed_audio_path = audio_assets.get("audio_path")
+    if (isinstance(mixed_audio_path, str) and mixed_audio_path
+            and os.path.isfile(mixed_audio_path) and os.path.getsize(mixed_audio_path) > 0):
+        audio_children.append({
+            "item_type": "clip",
+            "clip_id": "episode_dialogue_mix",
+            "shot_id": "",
+            "start_seconds": 0.0,
+            "duration_seconds": round(cursor, 3),
+            "media_reference": {"path": os.path.abspath(mixed_audio_path)},
+            "metadata": {"generation": {"source_kind": "assembled_dialogue_mix"},
+                         "audio_clip_count": _number(audio_assets.get("audio_clip_count"), 0)},
+        })
+    else:
+        # Backward-compatible path for older callers that do not provide assembly
+        # audio metadata. Only use real files and preserve their shot alignment.
+        shots = (shot_job or {}).get("shots", [])
+        if not isinstance(shots, list):
+            raise ValueError("shot_job.shots 必须是列表")
+        by_id = {}
+        for index, shot in enumerate(shots, 1):
+            if not isinstance(shot, dict):
+                raise ValueError(f"shot_job 第 {index} 个镜头必须是对象")
+            shot_id = shot.get("shot_id")
+            if shot_id is None or not str(shot_id).strip():
+                raise ValueError(f"shot_job 第 {index} 个镜头缺少 shot_id")
+            key = str(shot_id)
+            if key in by_id:
+                raise ValueError(f"shot_job 镜头 ID 重复：{key}")
+            artifacts = shot.get("artifacts", [])
+            if not isinstance(artifacts, list) or any(not isinstance(item, dict) for item in artifacts):
+                raise ValueError(f"镜头 {key} artifacts 必须是对象列表")
+            by_id[key] = shot
+        for clip in picture:
+            shot = by_id.get(clip["shot_id"], {})
+            for artifact in shot.get("artifacts", []):
+                path = artifact.get("path")
+                if artifact.get("kind") == "audio" and path and os.path.isfile(path) and os.path.getsize(path) > 0:
+                    audio_children.append({
+                        "item_type": "clip",
+                        "clip_id": f"{clip['shot_id']}_audio_{len(audio_children)+1}",
+                        "shot_id": clip["shot_id"],
+                        "start_seconds": clip["start_seconds"],
+                        "duration_seconds": clip["duration_seconds"],
+                        "media_reference": {"path": os.path.abspath(path)},
+                        "metadata": {"generation": {"source_kind": "audio_artifact"}},
+                    })
+
+    subtitle_path = audio_assets.get("subtitle_path")
+    subtitle_asset = None
+    if (isinstance(subtitle_path, str) and subtitle_path
+            and os.path.isfile(subtitle_path) and os.path.getsize(subtitle_path) > 0):
+        subtitle_asset = {
+            "path": os.path.abspath(subtitle_path),
+            "format": "srt",
+            "subtitle_count": int(_number(audio_assets.get("subtitle_count"), 0)),
+            "embedded_in_final_video": True,
+        }
 
     timeline = {
         "version": 1,
@@ -145,6 +174,7 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
             "real_video_scene_count": real_video_count,
             "fallback_scene_count": fallback_count,
             "audio_clip_count": len(audio_children),
+            "subtitle_count": int(_number(audio_assets.get("subtitle_count"), 0)),
         },
         "tracks": [
             {"track_id": "picture", "track_type": "video", "children": picture},
@@ -153,6 +183,7 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
         "transitions": [],
         "scene_index": scene_index,
         "final_video": os.path.abspath(final_video) if final_video else None,
+        "subtitles": subtitle_asset,
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
     fd, temp_path = tempfile.mkstemp(prefix=".canonical-timeline-", suffix=".tmp",
