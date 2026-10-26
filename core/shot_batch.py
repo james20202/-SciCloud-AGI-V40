@@ -27,13 +27,21 @@ def build_shot_batch_manifest(
     """Build stable, path-safe jobs while preserving all canonical shot context."""
     if not isinstance(shots, (list, tuple)) or not shots:
         raise ValueError("镜头批次不能为空")
-    normalized = normalize_shots(list(shots))
+    raw_shots = list(shots)
+    # normalize_shot intentionally aliases prompt to visual_prompt for legacy data;
+    # preserve explicit generated prompts before normalization so the two concepts
+    # remain distinct in the production manifest.
+    production_prompts = {
+        (item.get("shot_id") or item.get("id")): item.get("prompt")
+        for item in raw_shots if isinstance(item, dict)
+    }
+    normalized = normalize_shots(raw_shots)
     timeline = build_shot_manifest(normalized, target_duration=target_duration)
     safe_workflow = _safe_component(workflow_id, "workflow")
     jobs = []
     for index, shot in enumerate(normalized):
         visual_prompt = shot.get("visual_prompt", "")
-        prompt = shot.get("prompt") or visual_prompt
+        prompt = production_prompts.get(shot["shot_id"]) or visual_prompt
         if not isinstance(visual_prompt, str) or not visual_prompt.strip():
             raise ValueError(f"镜头 {shot['shot_id']} visual_prompt 不能为空")
         if not isinstance(prompt, str) or not prompt.strip():
