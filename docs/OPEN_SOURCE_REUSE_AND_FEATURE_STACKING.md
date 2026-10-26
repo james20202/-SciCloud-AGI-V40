@@ -135,12 +135,14 @@ Final edit QC now checks the actual probed media stream metadata. If the workflo
 - Each job preserves `shot_id`, order, planned duration, generated prompt vs. visual intent, dialogue/voiceover, scene and character IDs, workflow capability/registry selection, isolated output path, retry attempt, and initial status.
 - Prompt-task artifacts now include `shot_batch_manifest`; task results report the planned batch count and timeline duration.
 - Manifest creation rejects empty batches, duplicate shot IDs, missing visual prompts, invalid shot durations, and unsafe output path components. Duration mismatch is reported rather than silently stretched.
-- This is the persistence/contract layer only: the current ComfyUI adapter still renders the configured workflow as one submission. Shot-by-shot queue execution and aggregation remain a separate next step; the manifest must not be mistaken for completed media.
+- The manifest is now consumed by the opt-in per-shot execution branch below; it is not itself proof that media has been generated.
 
 ## Resumable per-shot ComfyUI execution (opt-in)
 
-- The video task can set `shot_batch_enabled: true` to execute each manifest job as a separate local ComfyUI submission.
-- `shot_param_bindings` maps canonical shot fields (`prompt`, `visual_prompt`, `duration_seconds`, `shot_id`) to declared scalar parameters in the selected workflow manifest. The default remains the legacy single-submission path.
+- The video task can set `shot_batch_enabled: true` to execute each manifest job as a separate local ComfyUI submission. A non-empty `shot_param_bindings` map also activates batch mode, so an explicit mapping does not need a second toggle.
+- `shot_param_bindings` maps canonical shot fields (`prompt`, `visual_prompt`, `duration_seconds`, `shot_id`) to declared scalar parameters in the selected workflow manifest. At least one prompt field must be mapped; the default with neither option remains the legacy single-submission path.
+- Before the first render, the adapter now preflights the selected manifest, checks video capability, verifies static workflow parameters and all per-shot parameter names, and compiles the graph. A bad mapping therefore fails before expensive generation starts.
+- On retry, the execution engine reconciles the saved checkpoint with the latest prompt artifact. It reuses completed outputs only when job IDs and immutable shot inputs match; changed prompts, duration, references, or output paths invalidate the old checkpoint.
 - Each shot is required to produce exactly one non-empty video file; images, audio-only outputs, ambiguous multiple videos, and missing outputs fail that shot.
 - The batch runner atomically checkpoints each job, tracks attempt count and error, skips still-valid completed outputs on resume, and only retries failed jobs when `retry_failed_shots: true` is explicitly set.
 - Output paths are confined under the project `output/shots` directory. The batch manifest is stored under `execution/<workflow-id>/` for inspection and recovery.
