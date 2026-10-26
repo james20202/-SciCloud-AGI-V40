@@ -101,3 +101,30 @@ def test_episode_package_requires_explicit_successful_qc_report(tmp_path):
     workflow["tasks"][2]["outputs"] = [str(qc)]
     with pytest.raises(ValueError, match="明确通过的质检报告"):
         build_episode_package(workflow, str(tmp_path / "unknown-qc.zip"))
+
+
+def test_episode_package_excludes_outputs_from_failed_and_pending_tasks(tmp_path):
+    workflow = _workflow(tmp_path)
+    failed_video = tmp_path / "stale-failed-video.mp4"
+    pending_asset = tmp_path / "pending-character.json"
+    failed_video.write_bytes(b"stale media")
+    pending_asset.write_text('{"character":"not ready"}', encoding="utf-8")
+    workflow["tasks"].extend([
+        {"id": "VIDEO-FAILED", "type": "video", "status": "failed", "outputs": [str(failed_video)]},
+        {"id": "CHAR-PENDING", "type": "character", "status": "pending", "outputs": [str(pending_asset)]},
+    ])
+
+    output = tmp_path / "completed-only.zip"
+    result = build_episode_package(workflow, str(output))
+
+    assert result["success"] is True
+    assert result["file_count"] == 3
+    assert {item["task_id"] for item in result["manifest"]["ignored_incomplete_task_outputs"]} == {
+        "VIDEO-FAILED", "CHAR-PENDING"
+    }
+    with zipfile.ZipFile(output) as archive:
+        names = set(archive.namelist())
+        assert not any(name.endswith("stale-failed-video.mp4") for name in names)
+        assert not any(name.endswith("pending-character.json") for name in names)
+        manifest = json.loads(archive.read("manifest.json"))
+        assert len(manifest["ignored_incomplete_task_outputs"]) == 2

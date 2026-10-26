@@ -13,6 +13,10 @@ AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"}
 
 
 def _existing_outputs(task: dict[str, Any]) -> list[str]:
+    # Stale files may remain on disk after a failed or interrupted task. Only
+    # consume artifacts explicitly committed by the workflow state machine.
+    if not isinstance(task, dict) or task.get("status") != "done":
+        return []
     paths = []
     for output in task.get("outputs") or []:
         path = output.get("path") if isinstance(output, dict) else output

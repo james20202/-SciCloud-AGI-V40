@@ -39,13 +39,24 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
     qc_report_found = False
     qc_failed = False
     final_video_found = False
+    ignored_incomplete_outputs: list[dict[str, Any]] = []
     video_suffixes = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
     for task in tasks:
         if not isinstance(task, dict):
             continue
         task_id = _safe_name(task.get("id"), "task")
-        for output in task.get("outputs") or []:
+        outputs = task.get("outputs") or []
+        if task.get("status") != "done":
+            if outputs:
+                ignored_incomplete_outputs.append({
+                    "task_id": task_id,
+                    "task_type": task.get("type"),
+                    "status": task.get("status"),
+                    "output_count": len(outputs) if isinstance(outputs, (list, tuple)) else 1,
+                })
+            continue
+        for output in outputs:
             source = output.get("path") if isinstance(output, dict) else output
             if not isinstance(source, str) or not os.path.isfile(source) or os.path.getsize(source) <= 0:
                 if source:
@@ -124,6 +135,7 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
         "completed_task_types": sorted(str(item) for item in completed_types if item),
         "file_count": len(manifest_files),
         "missing_or_invalid_outputs": missing,
+        "ignored_incomplete_task_outputs": ignored_incomplete_outputs,
         "files": manifest_files,
         "qc_reports": qc_payloads,
         "limitations": [
