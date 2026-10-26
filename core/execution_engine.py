@@ -1,4 +1,4 @@
-import json, math, os, re, shutil, tempfile
+import hashlib, json, math, os, re, shutil, tempfile
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.model_hub import model_hub
@@ -358,14 +358,35 @@ class ExecutionEngine:
                     for key,value in bindings.items()
                 ):
                     raise RuntimeError('shot_param_bindings 仅支持 prompt、visual_prompt、duration_seconds、shot_id 到已声明参数名的映射')
-                batch_dir=os.path.join(PROJECT_DIR,'execution',safe_wid)
-                batch_path=os.path.join(batch_dir,f'{safe_tid}_shot_batch.json')
-                # The prompt artifact is the current source of truth. Reuse previous
-                # per-shot statuses only if every job ID and immutable shot input matches.
-                batch=load_or_reconcile_shot_batch_manifest(batch,batch_path)
+                bindings=task.get('shot_param_bindings') or inferred_bindings or {}
+                if not isinstance(bindings,dict) or any(
+                    key not in {'prompt','visual_prompt','duration_seconds','shot_id'} or not isinstance(value,str) or not value
+                    for key,value in bindings.items()
+                ):
+                    raise RuntimeError('shot_param_bindings 仅支持 prompt、visual_prompt、duration_seconds、shot_id 到已声明参数名的映射')
                 base_params=task.get('workflow_params') or {}
                 if not isinstance(base_params,dict):
                     raise RuntimeError('workflow_params 必须是对象')
+                batch_dir=os.path.join(PROJECT_DIR,'execution',safe_wid)
+                batch_path=os.path.join(batch_dir,f'{safe_tid}_shot_batch.json')
+                # Bind checkpoint reuse to the complete render configuration, not only
+                # shot text. A changed workflow/model/asset/reference invalidates old media.
+                signature_payload={
+                    'model_id':model.get('model_id') or model.get('id'),
+                    'endpoint':model.get('endpoint'),
+                    'workflow_registry_id':task.get('workflow_registry_id') or batch.get('workflow_registry_id'),
+                    'workflow_capability':task.get('workflow_capability') or batch.get('workflow_capability'),
+                    'workflow_manifest':task.get('workflow_manifest'),
+                    'workflow_params':base_params,
+                    'workflow_assets':task.get('workflow_assets') or context.get('workflow_assets') or {},
+                    'shot_param_bindings':bindings,
+                    'character_references':task.get('character_references') or context.get('character_references') or [],
+                }
+                signature_raw=json.dumps(signature_payload,ensure_ascii=False,sort_keys=True,separators=(',',':'),default=str)
+                batch['execution_signature']=hashlib.sha256(signature_raw.encode('utf-8')).hexdigest()
+                # The prompt artifact is the current source of truth. Reuse previous
+                # per-shot states only if shot inputs AND render configuration match.
+                batch=load_or_reconcile_shot_batch_manifest(batch,batch_path)
                 preflight=getattr(adapter,'preflight_shot_batch',None)
                 if not callable(preflight):
                     raise RuntimeError('当前 ComfyUI 适配器不支持逐镜头工作流预检查，拒绝启动批次')
