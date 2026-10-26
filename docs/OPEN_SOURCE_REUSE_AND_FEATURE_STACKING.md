@@ -124,3 +124,7 @@ When an `edit` task uses the existing FFmpeg adapter and has no custom command, 
 - refuses to start when video, audio, or a valid duration target is missing.
 
 The existing FFmpeg adapter still verifies the final output is a non-empty file, and final QC probes the actual duration/streams. This is a first-pass assembly stage: it does not synthesize missing shots, perform word-level subtitle alignment, or guarantee that the upstream ComfyUI workflow generated every planned shot. Custom edit commands remain supported.
+
+### Final audio-stream gate
+
+Final edit QC now checks the actual probed media stream metadata. If the workflow has a completed, non-empty voice or sound artifact but the final video has no audio stream, QC fails the edit instead of allowing a silent MP4 to pass. The gate is covered by a regression test and does not require extra dependencies.
