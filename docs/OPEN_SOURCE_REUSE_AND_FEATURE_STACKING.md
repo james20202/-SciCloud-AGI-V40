@@ -113,3 +113,14 @@ The command-based TTS adapter now requires an explicit `output_path` or `output_
 ### Storyboard-to-TTS handoff
 
 For `voice` tasks using the command adapter, the execution engine now reads the linked storyboard and assembles a narration script from each shot's dialogue (preferred) or voiceover, unless the task supplies its own text. It provides a default local WAV destination under the project output directory. TTS command templates must use `{text}` and `{output}` placeholders to explicitly bind narration and destination; the adapter verifies the resulting non-empty file before marking the task complete. This produces a usable first-pass narration track, not word-level timing: final audio alignment and per-character voice casting remain later production steps.
+
+## Automatic final edit assembly
+
+When an `edit` task uses the existing FFmpeg adapter and has no custom command, SciCloud now builds a concrete local FFmpeg command from completed workflow artifacts:
+- orders available title-card video before generated video clips and concatenates them in portrait 1080×1920 at 24 fps;
+- mixes verified voice and sound/music files into an AAC stereo track;
+- includes the prompt artifact's SRT draft as an MP4 `mov_text` subtitle stream when one exists;
+- applies the director's target duration and writes a final MP4 under the project output directory;
+- refuses to start when video, audio, or a valid duration target is missing.
+
+The existing FFmpeg adapter still verifies the final output is a non-empty file, and final QC probes the actual duration/streams. This is a first-pass assembly stage: it does not synthesize missing shots, perform word-level subtitle alignment, or guarantee that the upstream ComfyUI workflow generated every planned shot. Custom edit commands remain supported.
