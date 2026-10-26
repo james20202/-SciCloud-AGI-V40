@@ -1,10 +1,40 @@
-import json, os, shutil, subprocess, sys, tempfile, urllib.request, zipfile
+import os, re, shutil, subprocess, sys, tempfile, urllib.request, zipfile
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from core.config import BASE_DIR, BACKUP_DIR
 from core.version import VERSION
 
+# No manifest server is required. The online check reads the canonical
+# version file from the main branch, and the one-click download uses the
+# main-branch archive. Keeping MANIFEST_URL for backward compatibility
+# only; check_online() no longer depends on it.
+# Note: these unauthenticated URLs work only while the repository is
+# publicly readable. If it is private, check_online() reports the failure
+# clearly (it never claims "no update") and the ZIP-import fallback in
+# System Center remains the working route.
 MANIFEST_URL = ""
+VERSION_URL = "https://raw.githubusercontent.com/james20202/-SciCloud-AGI-V40/main/core/version.py"
+ARCHIVE_URL = "https://github.com/james20202/-SciCloud-AGI-V40/archive/refs/heads/main.zip"
+
+
+def _version_tuple(version):
+    """Parse '40.411.0' -> (40, 411, 0); non-numeric parts are ignored."""
+    return tuple(int(p) for p in re.findall(r"\d+", str(version)))
+
+
+def _compare_versions(local, latest):
+    """Return 1 if latest > local, 0 if equal, -1 if latest < local."""
+    a, b = _version_tuple(local), _version_tuple(latest)
+    n = max(len(a), len(b))
+    a = a + (0,) * (n - len(a))
+    b = b + (0,) * (n - len(b))
+    return (b > a) - (b < a)
+
+
+def _parse_remote_version(text):
+    m = re.search(r'VERSION\s*=\s*["\']([^"\']+)["\']', text)
+    return m.group(1).strip() if m else ""
+
 
 class UpdateManager:
     def __init__(self):
@@ -13,6 +43,29 @@ class UpdateManager:
 
     def local_package(self, zip_path):
         return self._stage(zip_path)
+
+    def download_and_stage(self, url=None):
+        """Download a ZIP upgrade package and reuse the existing _stage()
+        validation + runner launch. The downloaded file is removed after
+        staging; the extracted stage directory is what the runner uses."""
+        target_url = url or ARCHIVE_URL
+        tmpdir = Path(tempfile.mkdtemp(prefix="scicloud_download_"))
+        tmp_zip = tmpdir / "scicloud_upgrade.zip"
+        try:
+            req = urllib.request.Request(
+                target_url, headers={"User-Agent": "SciCloud-AGI-V40"}
+            )
+            with urllib.request.urlopen(req, timeout=30) as r, open(tmp_zip, "wb") as f:
+                while True:
+                    chunk = r.read(1024 * 256)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            if not zipfile.is_zipfile(tmp_zip):
+                raise ValueError("下载的文件不是有效的 ZIP 升级包")
+            return self._stage(tmp_zip)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     def _stage(self, zip_path):
         z = Path(zip_path).expanduser().resolve()
@@ -54,14 +107,29 @@ class UpdateManager:
         return True
 
     def check_online(self):
-        if not MANIFEST_URL:
-            return {'available': False, 'version': VERSION, 'message': '在线升级通道尚未配置；可直接导入 ZIP 升级包。'}
         try:
-            with urllib.request.urlopen(MANIFEST_URL, timeout=5) as r:
-                data = json.loads(r.read().decode('utf-8'))
-            latest = str(data.get('version',''))
-            return {'available': latest and latest != VERSION, 'version': latest, 'url': data.get('url',''), 'message': data.get('notes','')}
+            req = urllib.request.Request(
+                VERSION_URL, headers={"User-Agent": "SciCloud-AGI-V40"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                text = r.read().decode('utf-8', errors='replace')
+            latest = _parse_remote_version(text)
+            if not latest:
+                return {'available': False, 'version': VERSION, 'error': True,
+                        'message': '检查失败：无法解析线上版本号；未确认是否有更新，请稍后重试或导入 ZIP 升级包。'}
+            cmp = _compare_versions(VERSION, latest)
+            if cmp > 0:
+                return {'available': True, 'version': latest, 'url': ARCHIVE_URL,
+                        'message': f'发现新版本 {latest}，当前版本 {VERSION}。'}
+            if cmp < 0:
+                # Local version is newer than main (e.g. a local dev build).
+                return {'available': False, 'version': latest, 'url': ARCHIVE_URL,
+                        'message': f'当前版本 {VERSION} 已高于线上版本 {latest}，无需升级。'}
+            return {'available': False, 'version': latest, 'url': ARCHIVE_URL,
+                    'message': f'已是最新版本（{VERSION}）。'}
         except Exception as e:
-            return {'available': False, 'version': VERSION, 'message': f'检查失败：{e}'}
+            # Never claim "no update" on a network failure.
+            return {'available': False, 'version': VERSION, 'error': True,
+                    'message': f'检查失败：{e}；未确认是否有更新，请稍后重试或导入 ZIP 升级包。'}
 
 update_manager = UpdateManager()

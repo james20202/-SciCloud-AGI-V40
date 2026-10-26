@@ -87,7 +87,7 @@ class MainWindow(QMainWindow):
         dock=QFrame(); dock.setObjectName('Dock'); dock.setFixedWidth(148)
         l=QVBoxLayout(dock); l.setContentsMargins(8,12,8,12); l.setSpacing(4)
         self.dock_buttons=[]
-        items=[('⌂','首页','驾驶舱'),('✦','创作','创作'),('▶','生产','生产'),('◇','资产','资产'),('◈','AI核心','模型')]
+        items=[('⌂','首页','驾驶舱'),('✦','创作','创作'),('▶','生产','生产'),('◇','资产','资产'),('◈','AI核心','模型'),('▦','分镜','分镜'),('⇄','工作流','工作流'),('↗','发布','发布')]
         for icon,label,key in items:
             b=QToolButton(); b.setObjectName('NavButton'); b.setCheckable(True); b.setText(icon+'\n'+label); b.setToolTip(label); b.setMinimumHeight(52); b.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Fixed); b.clicked.connect(lambda _=False,k=key:self.select(k)); l.addWidget(b); self.dock_buttons.append((key,b))
         tools=QToolButton(); tools.setObjectName('NavButton'); tools.setText('☷\n更多'); tools.setToolTip('更多功能'); tools.setMinimumHeight(52); tools.clicked.connect(self.show_more_menu); l.addWidget(tools); self.dock_buttons.append(('工具',tools))
@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
         routes={'驾驶舱':'驾驶舱','创作':'创作','生产':'生产','资产':'资产','模型':'模型','后期':'后期','系统':'系统'}
         target=routes.get(key,key); page=self.pages.get(target) or self.pages.get(key)
         if page: self.stack.setCurrentWidget(page)
-        groups={'生产':{'工作流','本地工厂','生产工作台','一键成片'},'创作':{'分镜','视觉审核'},'资产':{'人物场景','Prompt','Skill'},'模型':{'模型诊断','模型路由'},'后期':{'发布'}}
+        groups={'生产':{'本地工厂','生产工作台','一键成片'},'创作':{'视觉审核'},'资产':{'人物场景','Prompt','Skill'},'模型':{'模型诊断','模型路由'}}
         for group,b in self.dock_buttons: b.setChecked(group==key or key in groups.get(group,set()))
     def show_more_menu(self):
         menu=QMenu(self)
