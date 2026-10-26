@@ -60,7 +60,7 @@ def test_timeline_records_the_exact_audio_mix_and_burned_subtitle_asset():
         clip = os.path.join(root, "shot.mp4")
         mix = os.path.join(root, "dialogue_mix.m4a")
         srt = os.path.join(root, "dialogue.srt")
-        for path, data in ((clip, b"video"), (mix, b"audio"), (srt, b"1\\n00:00:00,000 --> 00:00:02,000\\n测试对白\\n")):
+        for path, data in ((clip, b"video"), (mix, b"audio"), (srt, "1\\n00:00:00,000 --> 00:00:02,000\\n测试对白\\n".encode("utf-8"))):
             with open(path, "wb") as stream:
                 stream.write(data)
         out = os.path.join(root, "timeline.json")
