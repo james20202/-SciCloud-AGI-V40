@@ -23,7 +23,12 @@ class EpisodePipeline:
         self.root=os.path.join(project_dir,'episode_pipelines')
         os.makedirs(self.root,exist_ok=True)
     def _now(self): return datetime.now().isoformat(timespec='seconds')
-    def _path(self,eid): return os.path.join(self.root,eid+'.json')
+    def _path(self,eid):
+        if not isinstance(eid, str) or not eid.strip() or eid in {'.', '..'}:
+            raise ValueError('episode_id 无效')
+        if '/' in eid or chr(92) in eid or chr(0) in eid:
+            raise ValueError('episode_id 不允许包含路径分隔符或空字符')
+        return os.path.join(self.root,eid+'.json')
     def _save(self,d):
         if not isinstance(d, dict) or not isinstance(d.get('episode_id'), str) or not d['episode_id'].strip():
             raise ValueError('episode_id 无效，无法保存生产流水线')
