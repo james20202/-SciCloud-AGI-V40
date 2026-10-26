@@ -188,18 +188,58 @@ class WorkflowEngine:
         elif any(t.get('status')==STATUS_FAILED for t in tasks): wf['status']='failed'
         else: wf['status']='ready'
 
+    def _qc_report_passed(self, task):
+        """Return true only when a persisted QC report explicitly passed."""
+        if not isinstance(task, dict):
+            return False
+        result=task.get('result')
+        if isinstance(result, dict) and result.get('success') is True:
+            return True
+        outputs=task.get('outputs',[])
+        for artifact_path in outputs if isinstance(outputs,list) else []:
+            if not isinstance(artifact_path,str) or not artifact_path:
+                continue
+            try:
+                with open(artifact_path,encoding='utf-8') as stream:
+                    report=json.load(stream)
+                if isinstance(report,dict) and report.get('success') is True:
+                    return True
+            except (OSError,ValueError,TypeError):
+                continue
+        return False
+
     def start_task(self,wid,task_id):
         wf=self.load(wid)
         if wf.get('paused'): return wf
         task=next((t for t in wf['tasks'] if t['id']==task_id),None)
         if not task: raise ValueError(f'任务不存在：{task_id}')
         if task['status']!=STATUS_READY: return wf
+        if task.get('type') == 'publish':
+            qc_tasks=[item for item in wf.get('tasks',[]) if item.get('type') == 'qc']
+            if not qc_tasks or not all(item.get('status') == STATUS_DONE and self._qc_report_passed(item) for item in qc_tasks):
+                task['error']='发布被拦截：必须先执行质检，并存在明确通过的 QC 报告；手动标记 QC 完成不构成通过'
+                self.save(wf)
+                return wf
+        task['error']=None
         task['status']=STATUS_RUNNING; task['progress']=1; task['started_at']=self._now(); self._refresh_ready(wf); self.save(wf); self._emit('task.started',wf,task); return wf
 
     def complete_task(self,wid,task_id):
         wf=self.load(wid); task=next((t for t in wf['tasks'] if t['id']==task_id),None)
         if not task: raise ValueError(f'任务不存在：{task_id}')
         if task['status'] not in (STATUS_RUNNING,STATUS_READY): return wf
+        if task.get('type') == 'qc' and not self._qc_report_passed(task):
+            task['error']='质检任务不能手动完成：请执行真实 QC 并保存通过报告'
+            self.save(wf)
+            return wf
+        if task.get('type') == 'publish':
+            outputs=task.get('outputs') if isinstance(task.get('outputs'),list) else []
+            valid_output=any(isinstance(artifact_path,str) and os.path.isfile(artifact_path) and os.path.getsize(artifact_path)>0 for artifact_path in outputs)
+            result=task.get('result')
+            if not valid_output or not isinstance(result,dict) or result.get('success') is not True:
+                task['error']='发布任务不能手动完成：必须生成非空交付包并保存成功结果'
+                self.save(wf)
+                return wf
+        task['error']=None
         task['status']=STATUS_DONE; task['progress']=100; task['finished_at']=self._now(); self._refresh_ready(wf); self.save(wf); self._emit('task.completed',wf,task); return wf
 
     def fail_task(self,wid,task_id,error='执行失败'):
