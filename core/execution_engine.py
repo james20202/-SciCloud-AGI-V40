@@ -11,7 +11,7 @@ from core.storyboard_engine import storyboard_director
 from core.qc_engine import qc_engine
 from core.motion_graphics_engine import motion_graphics_engine
 from core.shot_contract import normalize_shot, build_shot_manifest
-from core.shot_batch import build_shot_batch_manifest, run_shot_batch
+from core.shot_batch import build_shot_batch_manifest, load_or_reconcile_shot_batch_manifest, run_shot_batch
 from core.audio_timeline import build_audio_timeline, build_narration_script, render_srt
 from core.episode_package import build_episode_package
 from core.episode_render_engine import build_episode_edit_command
@@ -345,6 +345,9 @@ class ExecutionEngine:
                     raise RuntimeError('shot_param_bindings 仅支持 prompt、visual_prompt、duration_seconds、shot_id 到已声明参数名的映射')
                 batch_dir=os.path.join(PROJECT_DIR,'execution',safe_wid)
                 batch_path=os.path.join(batch_dir,f'{safe_tid}_shot_batch.json')
+                # The prompt artifact is the current source of truth. Reuse previous
+                # per-shot statuses only if every job ID and immutable shot input matches.
+                batch=load_or_reconcile_shot_batch_manifest(batch,batch_path)
                 base_params=task.get('workflow_params') or {}
                 if not isinstance(base_params,dict):
                     raise RuntimeError('workflow_params 必须是对象')
