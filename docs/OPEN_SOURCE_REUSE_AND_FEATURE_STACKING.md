@@ -128,3 +128,12 @@ The existing FFmpeg adapter still verifies the final output is a non-empty file,
 ### Final audio-stream gate
 
 Final edit QC now checks the actual probed media stream metadata. If the workflow has a completed, non-empty voice or sound artifact but the final video has no audio stream, QC fails the edit instead of allowing a silent MP4 to pass. The gate is covered by a regression test and does not require extra dependencies.
+
+## Shot-level generation manifest (implemented)
+
+- `core/shot_batch.py` converts generated per-shot prompts into a deterministic batch manifest.
+- Each job preserves `shot_id`, order, planned duration, generated prompt vs. visual intent, dialogue/voiceover, scene and character IDs, workflow capability/registry selection, isolated output path, retry attempt, and initial status.
+- Prompt-task artifacts now include `shot_batch_manifest`; task results report the planned batch count and timeline duration.
+- Manifest creation rejects empty batches, duplicate shot IDs, missing visual prompts, invalid shot durations, and unsafe output path components. Duration mismatch is reported rather than silently stretched.
+- This is the persistence/contract layer only: the current ComfyUI adapter still renders the configured workflow as one submission. Shot-by-shot queue execution and aggregation remain a separate next step; the manifest must not be mistaken for completed media.
+
