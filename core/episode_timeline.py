@@ -129,8 +129,10 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
             if key in by_id:
                 raise ValueError(f"shot_job 镜头 ID 重复：{key}")
             artifacts = shot.get("artifacts", [])
-            if not isinstance(artifacts, list) or any(not isinstance(item, dict) for item in artifacts):
-                raise ValueError(f"镜头 {key} artifacts 必须是对象列表")
+            if not isinstance(artifacts, list):
+                raise ValueError(f"镜头 {key} artifacts 必须是列表")
+            if any(not isinstance(item, dict) for item in artifacts):
+                raise ValueError(f"镜头 {key} artifacts 包含非对象记录")
             by_id[key] = shot
         for clip in picture:
             shot = by_id.get(clip["shot_id"], {})
