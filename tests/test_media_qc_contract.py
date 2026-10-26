@@ -119,7 +119,7 @@ def test_video_probe_rejects_duration_mismatch_against_episode_target(tmp_path):
             "streams": [{"codec_type": "video", "codec_name": "h264", "width": 720, "height": 1280}],
         }), stderr="")
 
-    result = MediaQualityEngine(runner=runner, which=lambda _: False).inspect(
+    result = MediaQualityEngine(runner=runner, which=lambda name: name == "ffprobe").inspect(
         str(path), expected_duration=60
     )
     assert result["passed"] is False
