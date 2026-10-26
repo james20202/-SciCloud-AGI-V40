@@ -112,7 +112,10 @@ class ComfyUIAdapter(BaseAdapter):
             capability = manifest.get("capability")
             if capability not in {"video.text2video", "video.image2video", "video.reference2video"}:
                 return {"success": False, "message": f"逐镜头视频任务不能使用工作流能力：{capability}"}
-            declared = {item.get("name") for item in manifest.get("params", []) if isinstance(item, dict)}
+            params_list = [item for item in manifest.get("params", []) if isinstance(item, dict)]
+            declared = {item.get("name") for item in params_list}
+            if None in declared or "" in declared:
+                return {"success": False, "message": "工作流参数声明缺少有效 name。"}
             base_params = task.get("workflow_params") or {}
             if not isinstance(base_params, dict):
                 return {"success": False, "message": "workflow_params 必须是对象。"}
@@ -121,6 +124,7 @@ class ComfyUIAdapter(BaseAdapter):
                 return {"success": False, "message": "workflow_params 含未声明参数：" + ", ".join(sorted(unknown_base))}
             if not ({"prompt", "visual_prompt"} & set(bindings)):
                 return {"success": False, "message": "逐镜头模式至少需要将 prompt 或 visual_prompt 映射到工作流参数，否则每个镜头会重复生成相同内容。"}
+            mapped_parameters = []
             for field, parameter in bindings.items():
                 if field not in {"prompt", "visual_prompt", "duration_seconds", "shot_id"}:
                     return {"success": False, "message": f"不支持的镜头字段映射：{field}"}
@@ -128,13 +132,29 @@ class ComfyUIAdapter(BaseAdapter):
                     return {"success": False, "message": f"镜头字段 {field} 的参数名无效"}
                 if parameter not in declared:
                     return {"success": False, "message": f"镜头字段 {field} 映射到未声明参数：{parameter}"}
+                mapped_parameters.append(parameter)
+            if len(mapped_parameters) != len(set(mapped_parameters)):
+                return {"success": False, "message": "多个镜头字段映射到了同一个工作流参数，逐镜头输入会相互覆盖。"}
+            assets = task.get("workflow_assets") or context.get("workflow_assets") or {}
+            if not isinstance(assets, dict):
+                return {"success": False, "message": "workflow_assets 必须是对象。"}
+            # Reject bad parameter types before the first network request.
+            for field, parameter in bindings.items():
+                value = {
+                    "prompt": "preflight prompt",
+                    "visual_prompt": "preflight visual prompt",
+                    "duration_seconds": 5.0,
+                    "shot_id": "preflight-shot",
+                }[field]
+                declaration = next(item for item in params_list if item.get("name") == parameter)
+                expected = declaration.get("type")
+                if expected in {"string", "text"} and not isinstance(value, str):
+                    return {"success": False, "message": f"参数 {parameter} 声明为 {expected}，但镜头字段 {field} 类型不匹配。"}
+                if expected in {"number", "float", "integer", "int"} and not isinstance(value, (int, float)):
+                    return {"success": False, "message": f"参数 {parameter} 声明为 {expected}，但镜头字段 {field} 类型不匹配。"}
             # Compile once before launching the batch to validate graph structure,
-            # asset references, and the static parameters for every upcoming shot.
-            compile_workflow(
-                manifest,
-                params=base_params,
-                assets=task.get("workflow_assets") or context.get("workflow_assets") or {},
-            )
+            # asset references, and static parameters for every upcoming shot.
+            compile_workflow(manifest, params=base_params, assets=assets)
             return {
                 "success": True,
                 "workflow_id": manifest.get("id"),
