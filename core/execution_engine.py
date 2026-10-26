@@ -351,6 +351,14 @@ class ExecutionEngine:
                 base_params=task.get('workflow_params') or {}
                 if not isinstance(base_params,dict):
                     raise RuntimeError('workflow_params 必须是对象')
+                preflight=getattr(adapter,'preflight_shot_batch',None)
+                if not callable(preflight):
+                    raise RuntimeError('当前 ComfyUI 适配器不支持逐镜头工作流预检查，拒绝启动批次')
+                preflight_result=preflight(task,bindings,context)
+                if not isinstance(preflight_result,dict) or preflight_result.get('success') is not True:
+                    detail=preflight_result.get('message','未知预检查错误') if isinstance(preflight_result,dict) else '适配器返回无效预检查结果'
+                    raise RuntimeError(detail)
+                batch['workflow_preflight']=preflight_result
                 def render_one_shot(job):
                     shot_task=dict(task)
                     shot_task['type']='video'
