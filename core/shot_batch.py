@@ -132,6 +132,13 @@ def load_or_reconcile_shot_batch_manifest(
             return fresh_manifest
         old_by_id[job["job_id"]] = job
 
+    # Rendering configuration changes (model, workflow graph, assets, references,
+    # parameter bindings) make prior media stale even when the storyboard is unchanged.
+    old_signature = previous.get("execution_signature")
+    new_signature = fresh_manifest.get("execution_signature")
+    if old_signature != new_signature:
+        return fresh_manifest
+
     new_jobs = fresh_manifest["jobs"]
     new_ids = [job.get("job_id") for job in new_jobs if isinstance(job, dict)]
     if len(new_ids) != len(new_jobs) or set(new_ids) != set(old_by_id):
