@@ -40,7 +40,9 @@ def test_episode_edit_builder_maps_video_audio_and_subtitles(tmp_path):
     assert result["video_inputs"][1].endswith("clip.mp4")
     assert len(result["audio_inputs"]) == 2
     assert result["subtitle_path"].endswith("subtitle_draft.srt")
-    assert "concat=n=2:v=1:a=0[vout]" in command[command.index("-filter_complex") + 1]
+    assert "concat=n=2:v=1:a=0[vcat]" in command[command.index("-filter_complex") + 1]
+    assert "tpad=stop_mode=clone:stop_duration=60" in command[command.index("-filter_complex") + 1]
+    assert "trim=duration=60" in command[command.index("-filter_complex") + 1]
     assert "[aout]" in command[command.index("-filter_complex") + 1]
     assert "-c:s" in command
     assert command[-1] == str(output.resolve())
@@ -66,3 +68,13 @@ def test_episode_edit_builder_requires_valid_target_duration(tmp_path):
     workflow["tasks"][-1]["expected_duration_seconds"] = float("nan")
     with pytest.raises(ValueError, match="目标时长"):
         build_episode_edit_command(workflow, str(tmp_path / "final.mp4"))
+
+
+def test_episode_edit_builder_pads_short_video_to_target_duration(tmp_path):
+    workflow = _workflow(tmp_path)
+    workflow["tasks"][-1]["expected_duration_seconds"] = 90
+    result = build_episode_edit_command(workflow, str(tmp_path / "final.mp4"))
+    filter_graph = result["command"][result["command"].index("-filter_complex") + 1]
+    assert "tpad=stop_mode=clone:stop_duration=90" in filter_graph
+    assert "trim=duration=90" in filter_graph
+    assert result["target_duration_seconds"] == 90
