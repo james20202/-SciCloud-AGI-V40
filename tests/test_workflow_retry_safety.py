@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from core.workflow_engine import STATUS_DONE, STATUS_FAILED, STATUS_PENDING, STATUS_READY, WorkflowEngine
+from core.workflow_engine import STATUS_DONE, STATUS_FAILED, STATUS_PENDING, STATUS_READY, STATUS_RUNNING, WorkflowEngine
 
 
 def _engine(tmp_path):
