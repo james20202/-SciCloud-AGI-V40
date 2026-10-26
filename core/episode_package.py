@@ -90,10 +90,17 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
                     with open(absolute, encoding="utf-8") as handle:
                         payload = json.load(handle)
                     if isinstance(payload, dict):
-                        if payload.get("success") is False:
+                        # Treat the report's pass fields as a single contract. A contradictory
+                        # report (success=True but passed=False, or vice versa) must never be
+                        # accepted as a green gate.
+                        success_flag = payload.get("success")
+                        passed_flag = payload.get("passed")
+                        has_explicit_pass = success_flag is True or passed_flag is True
+                        has_explicit_failure = success_flag is False or passed_flag is False
+                        if has_explicit_failure:
                             qc_failed = True
-                        if isinstance(payload.get("success"), bool):
-                            qc_report_found = qc_report_found or payload.get("success") is True
+                        if has_explicit_pass:
+                            qc_report_found = True
                             qc_payloads.append(payload)
                 except (OSError, ValueError):
                     pass
