@@ -55,3 +55,85 @@ def test_workflow_save_uses_valid_json_and_no_temporary_file_remains(tmp_path):
         loaded = json.load(handle)
     assert loaded["workflow_id"] == "WF-ATOMIC-SAVE"
     assert not [name for name in (tmp_path / "workflows").iterdir() if name.name.endswith(".tmp")]
+
+
+def test_qc_cannot_be_manually_completed_without_passed_report(tmp_path):
+    engine = _engine(tmp_path)
+    engine.save({
+        "workflow_id": "WF-QC-GATE",
+        "paused": False,
+        "tasks": [
+            {"id": "QC-1", "type": "qc", "status": STATUS_READY, "depends_on": [], "outputs": []},
+            {"id": "PUB-1", "type": "publish", "status": STATUS_PENDING, "depends_on": ["qc"], "outputs": []},
+        ],
+    })
+
+    updated = engine.complete_task("WF-QC-GATE", "QC-1")
+    persisted = engine.load("WF-QC-GATE")
+    qc = next(task for task in persisted["tasks"] if task["id"] == "QC-1")
+    publish = next(task for task in persisted["tasks"] if task["id"] == "PUB-1")
+
+    assert qc["status"] == STATUS_READY
+    assert "真实 QC" in qc["error"]
+    assert publish["status"] == STATUS_PENDING
+
+
+def test_publish_cannot_start_when_qc_was_marked_done_without_report(tmp_path):
+    engine = _engine(tmp_path)
+    engine.save({
+        "workflow_id": "WF-PUBLISH-GATE",
+        "paused": False,
+        "tasks": [
+            {"id": "QC-1", "type": "qc", "status": STATUS_DONE, "depends_on": [], "outputs": []},
+            {"id": "PUB-1", "type": "publish", "status": STATUS_READY, "depends_on": ["qc"], "outputs": []},
+        ],
+    })
+
+    engine.start_task("WF-PUBLISH-GATE", "PUB-1")
+    persisted = engine.load("WF-PUBLISH-GATE")
+    publish = next(task for task in persisted["tasks"] if task["id"] == "PUB-1")
+
+    assert publish["status"] == STATUS_READY
+    assert "QC 报告" in publish["error"]
+
+
+def test_passed_qc_artifact_is_required_and_allows_publish_start(tmp_path):
+    engine = _engine(tmp_path)
+    report_path = tmp_path / "qc-report.json"
+    report_path.write_text(json.dumps({"success": True, "passed": True}), encoding="utf-8")
+    engine.save({
+        "workflow_id": "WF-PUBLISH-PASS",
+        "paused": False,
+        "tasks": [
+            {"id": "QC-1", "type": "qc", "status": STATUS_READY, "depends_on": [], "outputs": [str(report_path)]},
+            {"id": "PUB-1", "type": "publish", "status": STATUS_PENDING, "depends_on": ["qc"], "outputs": []},
+        ],
+    })
+
+    engine.complete_task("WF-PUBLISH-PASS", "QC-1")
+    engine.start_task("WF-PUBLISH-PASS", "PUB-1")
+    persisted = engine.load("WF-PUBLISH-PASS")
+    qc = next(task for task in persisted["tasks"] if task["id"] == "QC-1")
+    publish = next(task for task in persisted["tasks"] if task["id"] == "PUB-1")
+
+    assert qc["status"] == STATUS_DONE
+    assert publish["status"] == STATUS_RUNNING
+    assert publish["error"] is None
+
+
+def test_publish_cannot_be_manually_completed_without_real_package(tmp_path):
+    engine = _engine(tmp_path)
+    engine.save({
+        "workflow_id": "WF-PUBLISH-COMPLETE-GATE",
+        "paused": False,
+        "tasks": [
+            {"id": "PUB-1", "type": "publish", "status": STATUS_READY, "depends_on": [], "outputs": []},
+        ],
+    })
+
+    engine.complete_task("WF-PUBLISH-COMPLETE-GATE", "PUB-1")
+    persisted = engine.load("WF-PUBLISH-COMPLETE-GATE")
+    publish = persisted["tasks"][0]
+
+    assert publish["status"] == STATUS_READY
+    assert "非空交付包" in publish["error"]
