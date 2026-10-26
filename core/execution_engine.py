@@ -366,8 +366,10 @@ class ExecutionEngine:
                 # Bind checkpoint reuse to the complete render configuration, not only
                 # shot text. A changed workflow/model/asset/reference invalidates old media.
                 signature_payload={
-                    'model_id':model.get('model_id') or model.get('id'),
-                    'endpoint':model.get('endpoint'),
+                    # Hash the complete selected model configuration (the manifest
+                    # stores only the digest, never this payload) so changing a checkpoint
+                    # or model option cannot accidentally reuse stale shot outputs.
+                    'model_configuration':model,
                     'workflow_registry_id':task.get('workflow_registry_id') or batch.get('workflow_registry_id'),
                     'workflow_capability':task.get('workflow_capability') or batch.get('workflow_capability'),
                     'workflow_manifest':task.get('workflow_manifest'),
