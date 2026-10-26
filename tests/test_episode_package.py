@@ -128,3 +128,16 @@ def test_episode_package_excludes_outputs_from_failed_and_pending_tasks(tmp_path
         assert not any(name.endswith("pending-character.json") for name in names)
         manifest = json.loads(archive.read("manifest.json"))
         assert len(manifest["ignored_incomplete_task_outputs"]) == 2
+
+
+@pytest.mark.parametrize("task_type, status", [("edit", "failed"), ("qc", "pending"), ("qc", "failed")])
+def test_episode_package_rejects_incomplete_duplicate_final_gate_tasks(tmp_path, task_type, status):
+    workflow = _workflow(tmp_path)
+    workflow["tasks"].append({
+        "id": f"{task_type.upper()}-EXTRA",
+        "type": task_type,
+        "status": status,
+        "outputs": [],
+    })
+    with pytest.raises(ValueError, match="未完成或失败"):
+        build_episode_package(workflow, str(tmp_path / "blocked-package.zip"))
