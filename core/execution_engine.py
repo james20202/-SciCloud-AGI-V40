@@ -1,4 +1,4 @@
-import json, math, os, re, tempfile
+import json, math, os, re, shutil, tempfile
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.model_hub import model_hub
@@ -11,7 +11,7 @@ from core.storyboard_engine import storyboard_director
 from core.qc_engine import qc_engine
 from core.motion_graphics_engine import motion_graphics_engine
 from core.shot_contract import normalize_shot, build_shot_manifest
-from core.shot_batch import build_shot_batch_manifest
+from core.shot_batch import build_shot_batch_manifest, run_shot_batch
 from core.audio_timeline import build_audio_timeline, build_narration_script, render_srt
 from core.episode_package import build_episode_package
 from core.episode_render_engine import build_episode_edit_command
@@ -310,7 +310,110 @@ class ExecutionEngine:
                     'output_path',
                     os.path.join(PROJECT_DIR,'output','voice',safe_wid,f'{safe_tid}.wav')
                 )
-            if model.get('adapter') == 'comfyui' and task.get('type') in {'image','video','voice','sound','edit'} and callable(getattr(adapter,'render',None)):
+            if (task.get('type') == 'video' and model.get('adapter') == 'comfyui'
+                    and task.get('shot_batch_enabled') is True
+                    and callable(getattr(adapter, 'render', None))):
+                # Explicit opt-in: execute each planned shot as an isolated ComfyUI
+                # submission, persist per-shot checkpoints, and resume completed shots.
+                prompt_task=next((item for item in wf.get('tasks',[]) if item.get('type')=='prompt'),None)
+                prompt_payload=None
+                if prompt_task:
+                    for output in prompt_task.get('outputs') or []:
+                        prompt_path=output.get('path') if isinstance(output,dict) else output
+                        if not isinstance(prompt_path,str) or not os.path.isfile(prompt_path) or not prompt_path.lower().endswith('.json'):
+                            continue
+                        try:
+                            with open(prompt_path,encoding='utf-8') as handle:
+                                candidate=json.load(handle)
+                            if isinstance(candidate,dict) and isinstance(candidate.get('shot_batch_manifest'),dict):
+                                prompt_payload=candidate
+                                break
+                        except (OSError,ValueError):
+                            continue
+                if not prompt_payload:
+                    raise RuntimeError('逐镜头模式已启用，但找不到包含 shot_batch_manifest 的提示词制品')
+                batch=prompt_payload['shot_batch_manifest']
+                if task.get('workflow_registry_id'):
+                    batch['workflow_registry_id']=task['workflow_registry_id']
+                if task.get('workflow_capability'):
+                    batch['workflow_capability']=task['workflow_capability']
+                bindings=task.get('shot_param_bindings') or {}
+                if not isinstance(bindings,dict) or any(
+                    key not in {'prompt','visual_prompt','duration_seconds','shot_id'} or not isinstance(value,str) or not value
+                    for key,value in bindings.items()
+                ):
+                    raise RuntimeError('shot_param_bindings 仅支持 prompt、visual_prompt、duration_seconds、shot_id 到已声明参数名的映射')
+                batch_dir=os.path.join(PROJECT_DIR,'execution',safe_wid)
+                batch_path=os.path.join(batch_dir,f'{safe_tid}_shot_batch.json')
+                base_params=task.get('workflow_params') or {}
+                if not isinstance(base_params,dict):
+                    raise RuntimeError('workflow_params 必须是对象')
+                def render_one_shot(job):
+                    shot_task=dict(task)
+                    shot_task['type']='video'
+                    shot_task['workflow_registry_id']=task.get('workflow_registry_id') or job.get('workflow_registry_id')
+                    shot_task['workflow_capability']=task.get('workflow_capability') or job.get('workflow_capability')
+                    shot_task['workflow_params']=dict(base_params)
+                    for field,param_name in bindings.items():
+                        if param_name in shot_task['workflow_params'] or param_name:
+                            shot_task['workflow_params'][param_name]=job.get(field)
+                    shot_task['output_dir']=os.path.join(batch_dir,'shots',str(job['shot_id']))
+                    shot_context=dict(context)
+                    shot_context['output_dir']=shot_task['output_dir']
+                    shot_result=adapter.render(model,shot_task,shot_context)
+                    if not shot_result or not getattr(shot_result,'success',False):
+                        raise RuntimeError(getattr(shot_result,'message','ComfyUI 镜头渲染失败'))
+                    raw=shot_result.outputs or []
+                    video_outputs=[]
+                    for item in raw:
+                        path=item.get('path') if isinstance(item,dict) else item
+                        ext=os.path.splitext(str(path))[1].lower() if path else ''
+                        if path and ext in {'.mp4','.mov','.mkv','.webm','.m4v','.gif'} and os.path.isfile(path) and os.path.getsize(path)>0:
+                            video_outputs.append((path,item))
+                    if len(video_outputs)!=1:
+                        raise RuntimeError(f"镜头 {job.get('shot_id')} 需要且仅需要一个视频输出，实际 {len(video_outputs)} 个")
+                    source,record=video_outputs[0]
+                    relative=job.get('output_path')
+                    target=os.path.abspath(os.path.join(PROJECT_DIR,relative))
+                    root=os.path.abspath(os.path.join(PROJECT_DIR,'output','shots'))
+                    if os.path.commonpath([root,target]) != root:
+                        raise RuntimeError('镜头输出路径越界')
+                    os.makedirs(os.path.dirname(target),exist_ok=True)
+                    temporary=target+'.tmp'+os.path.splitext(target)[1]
+                    try:
+                        shutil.copy2(source,temporary)
+                        if not os.path.isfile(temporary) or os.path.getsize(temporary)<=0:
+                            raise RuntimeError('镜头输出复制后为空')
+                        os.replace(temporary,target)
+                    finally:
+                        if os.path.exists(temporary):
+                            os.remove(temporary)
+                    return [{'path':target,'kind':'video','shot_id':job.get('shot_id'),'size':os.path.getsize(target)}]
+                batch_result=run_shot_batch(
+                    batch,render_one_shot,batch_path,
+                    retry_failed=task.get('retry_failed_shots') is True,
+                )
+                task['shot_batch_manifest_path']=batch_path
+                task['shot_batch_progress']=batch_result.get('progress',{})
+                completed_outputs=[]
+                for job in batch_result.get('jobs',[]):
+                    if job.get('status')=='done':
+                        completed_outputs.extend(job.get('outputs') or [])
+                if batch_result.get('status')!='done':
+                    progress=batch_result.get('progress',{})
+                    raise RuntimeError(
+                        f"逐镜头生成未全部完成：成功 {progress.get('done',0)}/{progress.get('total',0)}，"
+                        f"失败 {progress.get('failed',0)}，待执行 {progress.get('pending',0)}。"
+                        f"批次状态已保存：{batch_path}。设置 retry_failed_shots=true 可重试失败镜头。"
+                    )
+                result=type('ShotBatchResult',(),{
+                    'success':True,
+                    'message':f"逐镜头生成完成：{len(completed_outputs)} 个镜头视频",
+                    'outputs':completed_outputs,
+                    'data':{'shot_batch_manifest_path':batch_path,'progress':batch_result.get('progress',{})},
+                    'to_dict':lambda self:{'success':True,'message':self.message,'outputs':self.outputs,'data':self.data},
+                })()
+            elif model.get('adapter') == 'comfyui' and task.get('type') in {'image','video','voice','sound','edit'} and callable(getattr(adapter,'render',None)):
                 context['output_dir']=task.get('output_dir') or os.path.join(PROJECT_DIR,'output','comfyui',safe_wid,safe_tid)
                 result=adapter.render(model,adapter_task,context)
             else:
