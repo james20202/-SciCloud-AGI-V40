@@ -259,7 +259,7 @@ class EpisodePipeline:
         d['subtitle_path']=audio_assets.get('subtitle_path')
         d['final_video']=r.get('final_output')
         timeline_path=os.path.join(self.root,eid,'canonical_timeline.json')
-        timeline_result=build_episode_timeline(d,job,clip_records,timeline_path,d['final_video'])
+        timeline_result=build_episode_timeline(d,job,clip_records,timeline_path,d['final_video'],audio_assets=audio_assets)
         r['canonical_timeline']=timeline_result.get('path')
         r['timeline_summary']=timeline_result.get('timeline',{}).get('summary',{})
         otio_path=os.path.join(self.root,eid,'canonical_timeline.otio')
