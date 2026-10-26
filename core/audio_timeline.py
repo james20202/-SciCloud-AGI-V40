@@ -71,6 +71,24 @@ def build_audio_timeline(shots: Iterable[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+
+def build_narration_script(shots: Iterable[dict[str, Any]]) -> str:
+    """Create a first-pass TTS script, preferring dialogue then voiceover per shot."""
+    if not isinstance(shots, (list, tuple)):
+        raise ValueError("分镜 shots 必须是列表")
+    lines = []
+    for index, shot in enumerate(shots, start=1):
+        if not isinstance(shot, dict):
+            raise ValueError(f"第 {index} 个分镜必须是对象")
+        dialogue = shot.get("dialogue", "")
+        voiceover = shot.get("voiceover", "")
+        dialogue = dialogue.strip() if isinstance(dialogue, str) else ""
+        voiceover = voiceover.strip() if isinstance(voiceover, str) else ""
+        line = dialogue or voiceover
+        if line:
+            lines.append(line)
+    return "\n".join(lines)
+
 def render_srt(timeline: dict[str, Any]) -> str:
     """Render timeline subtitle cues as SRT; does not claim word-level alignment."""
     if not isinstance(timeline, dict) or not isinstance(timeline.get("subtitle_cues"), list):
