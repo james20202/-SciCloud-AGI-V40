@@ -141,3 +141,26 @@ def test_episode_package_rejects_incomplete_duplicate_final_gate_tasks(tmp_path,
     })
     with pytest.raises(ValueError, match="未完成或失败"):
         build_episode_package(workflow, str(tmp_path / "blocked-package.zip"))
+
+
+@pytest.mark.parametrize("report", [
+    {"success": True, "passed": False, "message": "contradictory report"},
+    {"success": False, "passed": True, "message": "contradictory report"},
+    {"passed": False, "message": "explicit failure"},
+])
+def test_episode_package_rejects_qc_reports_with_any_failed_pass_flag(tmp_path, report):
+    workflow = _workflow(tmp_path)
+    qc = tmp_path / "qc-conflict.json"
+    qc.write_text(json.dumps(report), encoding="utf-8")
+    workflow["tasks"][2]["outputs"] = [str(qc)]
+    with pytest.raises(ValueError, match="质检报告未通过"):
+        build_episode_package(workflow, str(tmp_path / "contradictory-qc.zip"))
+
+
+def test_episode_package_accepts_passed_only_qc_contract(tmp_path):
+    workflow = _workflow(tmp_path)
+    qc = tmp_path / "qc-passed-only.json"
+    qc.write_text(json.dumps({"passed": True, "message": "passed"}), encoding="utf-8")
+    workflow["tasks"][2]["outputs"] = [str(qc)]
+    result = build_episode_package(workflow, str(tmp_path / "passed-only.zip"))
+    assert result["success"] is True
