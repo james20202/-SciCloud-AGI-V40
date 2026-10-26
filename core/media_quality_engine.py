@@ -1,5 +1,6 @@
 """Local media QC using ffprobe and FFmpeg's blackdetect/silencedetect filters."""
 import json
+import math
 import os
 import re
 import shutil
@@ -45,14 +46,19 @@ class MediaQualityEngine:
         has_audio = any(s.get("codec_type") == "audio" for s in streams)
         errors = []
         warnings = []
-        if duration <= 0:
+        if not math.isfinite(duration) or duration <= 0:
             errors.append("invalid_duration")
         if not has_video:
             errors.append("missing_video_stream")
-        if expected_duration is not None and float(expected_duration) > 0:
-            tolerance = max(3.0, float(expected_duration) * 0.08)
-            if abs(duration - float(expected_duration)) > tolerance:
-                errors.append("duration_mismatch")
+        if expected_duration is not None:
+            try:
+                expected = float(expected_duration)
+                if not math.isfinite(expected) or expected <= 0:
+                    errors.append("invalid_expected_duration")
+                elif math.isfinite(duration) and abs(duration - expected) > max(3.0, expected * 0.08):
+                    errors.append("duration_mismatch")
+            except (TypeError, ValueError, OverflowError):
+                errors.append("invalid_expected_duration")
         diagnostics = {"success": False, "message": "未执行黑帧/静音检测"}
         if self.which("ffmpeg"):
             command = ["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-vf",
@@ -80,6 +86,51 @@ class MediaQualityEngine:
                 "expected_duration_seconds": expected_duration, "has_video_stream": has_video, "has_audio_stream": has_audio,
                 "streams": streams, "black_segments": black, "silence_segments": silence,
                 "warnings": warnings, "errors": errors, "deep_scan_success": bool(diagnostics.get("success"))}
+
+
+    def inspect_audio(self, path, expected_duration=None):
+        """Validate an audio artifact without incorrectly requiring a video stream."""
+        if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
+            return {"success": False, "passed": False, "message": "音频文件不存在或为空",
+                    "warnings": [], "errors": ["missing_file"]}
+        probe = self._run([
+            "ffprobe", "-v", "error", "-show_entries",
+            "format=duration,size,format_name:stream=codec_type,codec_name,sample_rate,channels",
+            "-of", "json", path
+        ], 60)
+        if not probe.get("success"):
+            return {"success": False, "passed": False,
+                    "message": probe.get("message") or probe.get("stderr") or "ffprobe 失败",
+                    "warnings": [], "errors": ["probe_failed"]}
+        try:
+            data = json.loads(probe["stdout"])
+            duration = float((data.get("format") or {}).get("duration") or 0)
+            streams = data.get("streams") or []
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return {"success": False, "passed": False, "message": "ffprobe 返回的数据无法解析",
+                    "warnings": [], "errors": ["invalid_probe"]}
+        errors = []
+        has_audio = any(stream.get("codec_type") == "audio" for stream in streams)
+        if not math.isfinite(duration) or duration <= 0:
+            errors.append("invalid_duration")
+        if not has_audio:
+            errors.append("missing_audio_stream")
+        if expected_duration is not None:
+            try:
+                expected = float(expected_duration)
+                if not math.isfinite(expected) or expected <= 0:
+                    errors.append("invalid_expected_duration")
+                elif math.isfinite(duration) and abs(duration - expected) > max(3.0, expected * 0.08):
+                    errors.append("duration_mismatch")
+            except (ValueError, TypeError, OverflowError):
+                errors.append("invalid_expected_duration")
+        passed = not errors
+        return {"success": passed, "passed": passed,
+                "message": "音频技术质检通过" if passed else "音频技术质检未通过",
+                "path": os.path.abspath(path), "size_bytes": os.path.getsize(path),
+                "duration_seconds": duration, "expected_duration_seconds": expected_duration,
+                "has_audio_stream": has_audio, "streams": streams, "warnings": [], "errors": errors}
+
 
 
 media_quality_engine = MediaQualityEngine()

@@ -1,4 +1,4 @@
-import json, os, re
+import json, os, re, tempfile
 from datetime import datetime
 from uuid import uuid4
 from core.config import PROJECT_DIR
@@ -17,12 +17,23 @@ class DirectorPlanEngine:
 
     def create_plan(self, idea, title=None, duration=60, ratio="9:16"):
         idea = (idea or "").strip()
+        if not idea:
+            raise ValueError("请先填写剧情创意")
+        try:
+            duration_value = float(duration)
+        except (TypeError, ValueError):
+            raise ValueError("目标时长必须是有效数字")
+        if not 1 <= duration_value <= 3600:
+            raise ValueError("目标时长必须在 1 到 3600 秒之间")
+        if ratio not in {"9:16", "16:9", "1:1"}:
+            raise ValueError("画幅仅支持 9:16、16:9 或 1:1")
+        duration = int(round(duration_value))
         title = title or self._make_title(idea)
         genre = self._pick(idea, ["中式恐怖","修仙","玄幻","悬疑","推理","灵异","僵尸","科幻","都市情感","都市逆袭"], "原创短剧")
         hook = self._make_hook(idea, genre)
         characters = self._characters(idea, genre)
         scenes = self._scenes(idea, genre)
-        shots = self._shots(duration, characters, scenes, idea)
+        shots = self._shots(duration, characters, scenes, idea, ratio)
         tasks = self._tasks()
         plan = {
             "plan_id": "PLAN-" + uuid4().hex[:8].upper(),
@@ -72,7 +83,7 @@ class DirectorPlanEngine:
             {"id":"SCENE-00003","name":"悬念结尾空间","purpose":"留下下一集钩子","status":"planned"}
         ]
 
-    def _shots(self, duration, chars, scenes, idea):
+    def _shots(self, duration, chars, scenes, idea, ratio="9:16"):
         # Keep the shot plan reasonably paced and make its duration sum exact
         # to one decimal place, including durations that do not divide evenly.
         duration = max(1.0, float(duration))
@@ -88,7 +99,7 @@ class DirectorPlanEngine:
                 "id": f"SHOT-{i+1:04d}", "index": i+1,
                 "duration": shot_tenths / 10, "scene_id": scene_id,
                 "type": labels[i] if i < len(labels) else "补充镜头",
-                "visual_prompt": f"{idea.strip()}；镜头{i+1}，电影级构图，9:16竖屏，画面连续且人物一致",
+                "visual_prompt": f"{idea.strip()}；镜头{i+1}，电影级构图，{ratio}画幅，画面连续且人物一致",
                 "action": "推动剧情并强化镜头信息",
                 "dialogue": "", "director_note": "",
                 "prompt_status": "pending", "status": "planned"
@@ -96,13 +107,30 @@ class DirectorPlanEngine:
         return shots
 
     def _tasks(self):
-        names=[("TASK-01","story","生成/完善剧本"),("TASK-02","character","建立人物资产"),("TASK-03","scene","建立场景资产"),("TASK-04","storyboard","生成分镜"),("TASK-05","prompt","生成镜头Prompt"),("TASK-06","image","生成关键画面"),("TASK-07","video","生成动态镜头"),("TASK-08","voice","生成配音"),("TASK-09","sound","生成音效与BGM"),("TASK-10","edit","进入剪辑时间轴"),("TASK-11","qc","质量检查"),("TASK-12","publish","准备发布")]
+        names=[("TASK-01","story","生成/完善剧本"),("TASK-02","character","建立人物资产"),("TASK-03","scene","建立场景资产"),("TASK-04","storyboard","生成分镜"),("TASK-05","prompt","生成镜头Prompt"),("TASK-06","image","生成关键画面"),("TASK-07","video","生成动态镜头"),("TASK-08","voice","生成配音"),("TASK-09","sound","生成音效与BGM"),("TASK-10","edit","进入剪辑时间轴"),("TASK-11","qc","质量检查"),("TASK-12","publish","准备发布"),("TASK-13","title_card","生成片头/章节标题卡")]
         return [{"id":i,"type":t,"name":n,"status":"pending","progress":0} for i,t,n in names]
 
     def save_plan(self, plan):
-        safe = re.sub(r'[^a-zA-Z0-9_-]+','_', plan['plan_id'])
+        if not isinstance(plan, dict):
+            raise ValueError('导演计划必须是对象')
+        plan_id=plan.get('plan_id')
+        if not isinstance(plan_id, str) or not plan_id.strip():
+            raise ValueError('导演计划缺少有效 plan_id')
+        safe = re.sub(r'[^a-zA-Z0-9_-]+','_', plan_id).strip('_')
+        if not safe:
+            raise ValueError('导演计划 plan_id 无法生成安全文件名')
+        os.makedirs(self.project_dir, exist_ok=True)
         path=os.path.join(self.project_dir, safe + '.json')
-        with open(path,'w',encoding='utf-8') as f: json.dump(plan,f,ensure_ascii=False,indent=2)
+        fd,tmp_path=tempfile.mkstemp(prefix='.plan-',suffix='.tmp',dir=self.project_dir)
+        try:
+            with os.fdopen(fd,'w',encoding='utf-8') as f:
+                json.dump(plan,f,ensure_ascii=False,indent=2,allow_nan=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path,path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
         return path
 
     def load_plans(self):

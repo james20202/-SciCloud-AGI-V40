@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import tempfile
 from datetime import datetime
 from uuid import uuid4
 from core.config import DATA_DIR, PROJECT_DIR, OUTPUT_DIR
@@ -30,10 +31,16 @@ class AssetManager:
 
     def _save(self, assets):
         os.makedirs(os.path.dirname(self.db), exist_ok=True)
-        tmp = self.db + '.tmp'
-        with open(tmp, 'w', encoding='utf-8') as f:
-            json.dump(assets, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, self.db)
+        fd, tmp = tempfile.mkstemp(prefix='.assets-', suffix='.tmp', dir=os.path.dirname(self.db))
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(assets, f, ensure_ascii=False, indent=2, allow_nan=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.db)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
 
     def list_assets(self, asset_type=None, entity_id=None):
         items = self._load()
@@ -75,10 +82,12 @@ class AssetManager:
 
     def register_result_file(self, path, asset_type='result', name=None, project_id=None, metadata=None):
         path = os.path.abspath(path)
-        if not os.path.isfile(path):
+        if not os.path.isfile(path) or os.path.getsize(path) <= 0:
             return None
+        details = dict(metadata or {})
+        details.setdefault('size', os.path.getsize(path))
         return self.register(asset_type, name or os.path.basename(path), source=path,
-                             project_id=project_id, metadata=metadata or {'size': os.path.getsize(path)})
+                             project_id=project_id, metadata=details)
 
     def register_plan_entity(self, entity, entity_type, plan_id, project_id=None):
         mapping = {'character': 'character', 'scene': 'scene'}
@@ -88,12 +97,24 @@ class AssetManager:
 
     def register_execution(self, task, outputs, project_id=None, data=None):
         created = []
-        for path in outputs or []:
-            if isinstance(path, str) and os.path.isfile(path):
-                created.append(self.register_result_file(path, asset_type=task.get('type','result'),
-                                                         project_id=project_id,
-                                                         metadata={'task_id': task.get('id'), 'data': data or {}}))
-        return [x for x in created if x]
+        for output in outputs or []:
+            # Adapters may return either a path string or a structured output record.
+            path = output.get('path') if isinstance(output, dict) else output
+            if isinstance(path, str) and os.path.isfile(path) and os.path.getsize(path) > 0:
+                metadata = {'task_id': task.get('id'), 'data': data or {}}
+                if isinstance(output, dict):
+                    metadata['output_metadata'] = {
+                        key: value for key, value in output.items() if key != 'path'
+                    }
+                asset = self.register_result_file(
+                    path,
+                    asset_type=task.get('type', 'result'),
+                    project_id=project_id,
+                    metadata=metadata,
+                )
+                if asset:
+                    created.append(asset)
+        return created
 
     def stats(self):
         assets = self._load()

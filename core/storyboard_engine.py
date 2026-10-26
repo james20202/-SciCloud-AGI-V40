@@ -1,10 +1,11 @@
-import json, os
+import json, math, os, tempfile
 from datetime import datetime
 from uuid import uuid4
 from core.config import PROJECT_DIR
 from core.bible_manager import bible_manager
 from core.prompt_engine import prompt_engine
 from core.continuity_engine import continuity_engine
+from core.shot_contract import normalize_shot, normalize_shots
 
 STORYBOARD_DIR = os.path.join(PROJECT_DIR, 'storyboards')
 os.makedirs(STORYBOARD_DIR, exist_ok=True)
@@ -21,17 +22,57 @@ class StoryboardDirector:
         self.directory = directory
         os.makedirs(self.directory, exist_ok=True)
 
-    def _path(self, storyboard_id): return os.path.join(self.directory, storyboard_id + '.json')
+    def _path(self, storyboard_id):
+        if not isinstance(storyboard_id, str) or not storyboard_id.strip() or storyboard_id in {'.', '..'}:
+            raise ValueError('storyboard_id 无效')
+        if '/' in storyboard_id or chr(92) in storyboard_id or chr(0) in storyboard_id:
+            raise ValueError('storyboard_id 不允许包含路径分隔符或空字符')
+        return os.path.join(self.directory, storyboard_id + '.json')
 
     def create_from_plan(self, plan):
+        if not isinstance(plan, dict):
+            raise ValueError('导演计划必须是对象')
+        raw_shots = plan.get('shots', [])
+        if not isinstance(raw_shots, list):
+            raise ValueError('导演计划 shots 必须是列表')
         shots=[]
+        seen_ids=set()
         characters=plan.get('characters',[]); scenes=plan.get('scenes',[])
-        for i, raw in enumerate(plan.get('shots', [])):
-            scene_id=raw.get('scene_id') or (scenes[min(i//3,len(scenes)-1)]['id'] if scenes else '')
-            char_ids=[c['id'] for c in characters[:1]] if characters else []
+        for i, raw in enumerate(raw_shots):
+            if not isinstance(raw, dict):
+                raise ValueError(f'第 {i+1} 个镜头必须是对象')
+            shot_id=raw.get('id') or f'SHOT-{i+1:04d}'
+            if not isinstance(shot_id, str) or not shot_id.strip():
+                raise ValueError(f'第 {i+1} 个镜头 ID 无效')
+            if shot_id in seen_ids:
+                raise ValueError(f'镜头 ID 重复：{shot_id}')
+            seen_ids.add(shot_id)
+            try:
+                duration=float(raw.get('duration', 5.0))
+            except (TypeError, ValueError):
+                raise ValueError(f'镜头 {shot_id} 时长必须是数字')
+            if not math.isfinite(duration) or duration <= 0 or duration > 3600:
+                raise ValueError(f'镜头 {shot_id} 时长必须大于 0 且不超过 3600 秒')
+            # Keep explicit IDs from the plan. The old conditional discarded a valid
+            # scene_id whenever the plan omitted its scenes array.
+            scene_id = raw.get('scene_id')
+            if not scene_id and scenes:
+                fallback_scene = scenes[min(i // 3, len(scenes) - 1)]
+                scene_id = fallback_scene.get('id', '') if isinstance(fallback_scene, dict) else ''
+            # Preserve multi-character shot assignments instead of silently replacing
+            # them with the first character in the plan.
+            raw_character_ids = raw.get('character_ids')
+            if isinstance(raw_character_ids, list):
+                char_ids = [
+                    item.get('id') if isinstance(item, dict) else item
+                    for item in raw_character_ids
+                ]
+                char_ids = [item for item in char_ids if isinstance(item, str) and item]
+            else:
+                char_ids = [c['id'] for c in characters[:1] if isinstance(c, dict) and c.get('id')]
             shot={
-                'id': raw.get('id') or f'SHOT-{i+1:04d}', 'index': i+1,
-                'duration': raw.get('duration', 5.0), 'type': raw.get('type', self.SHOT_TYPES[i%len(self.SHOT_TYPES)]),
+                'id': shot_id, 'index': i+1,
+                'duration': duration, 'type': raw.get('type', self.SHOT_TYPES[i%len(self.SHOT_TYPES)]),
                 'scene_id': scene_id, 'character_ids': char_ids,
                 'shot_size': self.SHOT_SIZES[min(i, len(self.SHOT_SIZES)-1)],
                 'camera_angle': self.CAMERA_ANGLES[i % len(self.CAMERA_ANGLES)],
@@ -51,13 +92,31 @@ class StoryboardDirector:
                 'continuity_sensitive': bool(raw.get('continuity_sensitive', True)),
                 'status':'planned', 'prompt_status':'pending'
             }
-            shots.append(shot)
+            # Normalize at the storyboard boundary while preserving legacy fields.
+            shots.append(normalize_shot(shot, i))
         storyboard={'storyboard_id':'STORYBOARD-'+uuid4().hex[:8].upper(),'version':1,'created_at':datetime.now().isoformat(timespec='seconds'),'updated_at':datetime.now().isoformat(timespec='seconds'),'plan_id':plan.get('plan_id'),'title':plan.get('title'),'shots':shots}
         return self.save(storyboard)
 
     def save(self, storyboard):
-        storyboard=dict(storyboard); storyboard['updated_at']=datetime.now().isoformat(timespec='seconds')
-        with open(self._path(storyboard['storyboard_id']),'w',encoding='utf-8') as f: json.dump(storyboard,f,ensure_ascii=False,indent=2)
+        if not isinstance(storyboard, dict):
+            raise ValueError('分镜必须是对象')
+        storyboard=dict(storyboard)
+        path=self._path(storyboard.get('storyboard_id'))
+        if not isinstance(storyboard.get('shots'), list):
+            raise ValueError('分镜 shots 必须是列表')
+        # Old project files are normalized in memory; unknown shot fields survive.
+        storyboard['shots'] = normalize_shots(storyboard['shots'])
+        storyboard['updated_at']=datetime.now().isoformat(timespec='seconds')
+        fd,tmp_path=tempfile.mkstemp(prefix='.storyboard-',suffix='.tmp',dir=self.directory)
+        try:
+            with os.fdopen(fd,'w',encoding='utf-8') as f:
+                json.dump(storyboard,f,ensure_ascii=False,indent=2,allow_nan=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path,path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
         return storyboard
 
     def load(self, storyboard_id):

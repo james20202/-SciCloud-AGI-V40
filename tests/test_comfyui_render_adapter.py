@@ -68,3 +68,77 @@ def test_completed_workflow_without_media_is_not_success():
         result = adapter.render(model, {'workflow': {'1': {}}, 'output_dir': outdir})
     assert not result.success
     assert '没有发现可下载' in result.message
+
+
+def test_adapter_compiles_manifest_into_api_graph():
+    adapter = ComfyUIAdapter()
+    manifest = {
+        'id': 'test-txt2img',
+        'version': 1,
+        'capability': 'image.text2image',
+        'runner': 'comfyui',
+        'graph': {
+            '4': {'class_type': 'CheckpointLoaderSimple', 'inputs': {'ckpt_name': '$assets.checkpoint'}},
+            '3': {'class_type': 'KSampler', 'inputs': {'steps': 15, 'cfg': 7.0}},
+        },
+        'params': [
+            {'name': 'steps', 'inject': {'type': 'scalar', 'to': [['3', 'steps']]}},
+        ],
+    }
+    workflow, error = adapter._workflow(
+        {'workflow_manifest': manifest, 'workflow_params': {'steps': 24},
+         'workflow_assets': {'checkpoint': 'local-checkpoint.safetensors'}},
+        {},
+    )
+    assert error is None
+    assert workflow['3']['inputs']['steps'] == 24
+    assert workflow['4']['inputs']['ckpt_name'] == 'local-checkpoint.safetensors'
+    assert manifest['graph']['3']['inputs']['steps'] == 15
+
+
+def test_adapter_rejects_invalid_manifest_before_submission():
+    adapter = ComfyUIAdapter()
+    workflow, error = adapter._workflow(
+        {'workflow_manifest': {'id': '../bad'}},
+        {},
+    )
+    assert workflow is None
+    assert '工作流清单无效' in error
+
+
+
+def test_render_rejects_unbounded_or_non_numeric_wait_settings():
+    adapter = ComfyUIAdapter()
+    model = {"endpoint": "http://127.0.0.1:8188"}
+    with patch.object(adapter, "execute", return_value=type(
+        "Submission", (), {"success": True, "data": {"prompt_id": "p1"}, "message": "queued"}
+    )()):
+        result = adapter.render(model, {"timeout": 7201}, {})
+    assert not result.success
+    assert "timeout" in result.message
+
+    with patch.object(adapter, "execute", return_value=type(
+        "Submission", (), {"success": True, "data": {"prompt_id": "p1"}, "message": "queued"}
+    )()):
+        result = adapter.render(model, {"poll_interval": 11}, {})
+    assert not result.success
+    assert "poll_interval" in result.message
+
+
+def test_download_outputs_uses_atomic_file_replacement_and_cleans_temp_files(tmp_path):
+    adapter = ComfyUIAdapter()
+    model = {"endpoint": "http://127.0.0.1:8188"}
+    refs = [{
+        "filename": "render.png",
+        "subfolder": "",
+        "type": "output",
+        "node_id": "9",
+        "kind": "image",
+    }]
+
+    with patch("core.adapters.comfyui_adapter.request.urlopen", return_value=FakeResponse(b"valid-media")):
+        saved = adapter.download_outputs(model, refs, str(tmp_path))
+
+    assert len(saved) == 1
+    assert open(saved[0]["path"], "rb").read() == b"valid-media"
+    assert not list(tmp_path.glob(".comfyui-output-*"))

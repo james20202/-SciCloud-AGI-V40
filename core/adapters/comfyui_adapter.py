@@ -1,9 +1,15 @@
-import json, os, time, uuid
+import json, os, time, uuid, tempfile
 from pathlib import Path
 from urllib import request, parse
 from urllib.error import HTTPError, URLError
 from core.adapters.base import BaseAdapter, AdapterResult
 from core.character_reference_comfyui import bind_character_references
+from core.comfyui_workflow_registry import compile_workflow, validate_manifest, WorkflowManifestError, WorkflowRegistry
+from core.config import DATA_DIR
+from core.render_budget import budget_from_task, apply_budget_to_graph
+
+BUILTIN_WORKFLOW_DIR = os.path.join(DATA_DIR, 'comfyui_workflows', 'builtin')
+USER_WORKFLOW_DIR = os.path.join(DATA_DIR, 'comfyui_workflows', 'user')
 
 
 class ComfyUIAdapter(BaseAdapter):
@@ -32,6 +38,45 @@ class ComfyUIAdapter(BaseAdapter):
             return AdapterResult(False, f'ComfyUI 未连接：{e}')
 
     def _workflow(self, task, context):
+        manifest = task.get('workflow_manifest') or context.get('workflow_manifest')
+        registry_id = task.get('workflow_registry_id') or context.get('workflow_registry_id')
+        registry = WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR)
+        if manifest is None and registry_id:
+            try:
+                manifest = registry.get(registry_id)
+            except WorkflowManifestError as exc:
+                return None, f'未能加载已登记的 ComfyUI 工作流：{exc}'
+        # Allow production tasks to select a registered workflow by capability,
+        # so users do not have to embed a large API graph in every task JSON.
+        # Ambiguous matches are rejected instead of silently choosing the wrong model.
+        if manifest is None and not registry_id and not (task.get('workflow') or context.get('workflow')):
+            requested_capability = task.get('workflow_capability') or context.get('workflow_capability')
+            if not requested_capability:
+                requested_capability = {
+                    'image': 'image.text2image',
+                    'video': 'video.image2video',
+                }.get(task.get('type'))
+            if requested_capability:
+                matches = [
+                    item for item in registry.list()
+                    if item.get('capability') == requested_capability
+                ]
+                if len(matches) == 1:
+                    manifest = matches[0]
+                elif len(matches) > 1:
+                    return None, (
+                        f'工作流能力 {requested_capability} 对应 {len(matches)} 个已登记工作流；'
+                        '请在任务中指定 workflow_registry_id。'
+                    )
+        if manifest is not None:
+            try:
+                return compile_workflow(
+                    manifest,
+                    params=task.get('workflow_params') or context.get('workflow_params') or {},
+                    assets=task.get('workflow_assets') or context.get('workflow_assets') or {},
+                ), None
+            except WorkflowManifestError as exc:
+                return None, f'ComfyUI 工作流清单无效：{exc}'
         workflow = task.get('workflow') or context.get('workflow')
         if isinstance(workflow, str):
             try:
@@ -42,10 +87,151 @@ class ComfyUIAdapter(BaseAdapter):
             return None, 'ComfyUI 任务缺少 API 格式 workflow JSON，未执行。'
         return workflow, None
 
+    def infer_shot_param_bindings(self, task, context=None):
+        """Infer safe per-shot parameter bindings only from an unambiguous registered manifest."""
+        context = context or {}
+        if not isinstance(task, dict):
+            return {"success": False, "bindings": {}, "message": "任务必须是对象。"}
+        manifest = task.get("workflow_manifest") or context.get("workflow_manifest")
+        registry_id = task.get("workflow_registry_id") or context.get("workflow_registry_id")
+        registry = WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR)
+        try:
+            if manifest is None and registry_id:
+                manifest = registry.get(registry_id)
+            if manifest is None:
+                requested = task.get("workflow_capability") or context.get("workflow_capability") or "video.image2video"
+                matches = [item for item in registry.list() if item.get("capability") == requested]
+                if len(matches) != 1:
+                    return {"success": False, "bindings": {}, "message": "无法唯一确定已登记的工作流。"}
+                manifest = matches[0]
+            checked = validate_manifest(manifest)
+            if checked.get("capability") not in {"video.text2video", "video.image2video", "video.reference2video"}:
+                return {"success": False, "bindings": {}, "message": "登记的工作流不是视频生成能力。"}
+            params = [item for item in checked.get("params", []) if isinstance(item, dict)]
+            names = {str(item.get("name", "")).strip().lower(): item.get("name") for item in params}
+            # Exact names only: do not guess at arbitrary custom parameters.
+            prompt_candidates = ("prompt", "positive_prompt", "prompt_text", "text", "positive")
+            selected = None
+            for candidate in prompt_candidates:
+                if candidate in names:
+                    selected = names[candidate]
+                    break
+            if not selected:
+                return {"success": False, "bindings": {}, "message": "工作流没有可识别的提示词参数。"}
+            bindings = {"prompt": selected}
+            for field, candidates in (
+                ("duration_seconds", ("duration_seconds", "seconds", "length_seconds", "duration")),
+                ("shot_id", ("shot_id", "scene_id")),
+            ):
+                found = [names[name] for name in candidates if name in names]
+                if len(found) == 1 and found[0] not in bindings.values():
+                    bindings[field] = found[0]
+            return {"success": True, "bindings": bindings, "workflow_id": checked.get("id"), "auto_inferred": True}
+        except (WorkflowManifestError, TypeError, ValueError) as exc:
+            return {"success": False, "bindings": {}, "message": f"无法推断逐镜头参数：{exc}"}
+
+    def preflight_shot_batch(self, task, bindings, context=None):
+        """Validate a per-shot task against its registered manifest before any render starts."""
+        context = context or {}
+        if not isinstance(task, dict) or not isinstance(bindings, dict):
+            return {"success": False, "message": "逐镜头预检查需要有效 task 和 bindings 对象。"}
+        manifest = task.get("workflow_manifest") or context.get("workflow_manifest")
+        registry_id = task.get("workflow_registry_id") or context.get("workflow_registry_id")
+        registry = WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR)
+        try:
+            if manifest is None and registry_id:
+                manifest = registry.get(registry_id)
+            if manifest is not None and not isinstance(manifest, dict):
+                return {"success": False, "message": "workflow_manifest 必须是对象；逐镜头批次未启动。"}
+            if manifest is None:
+                requested = task.get("workflow_capability") or context.get("workflow_capability") or "video.image2video"
+                matches = [item for item in registry.list() if item.get("capability") == requested]
+                if len(matches) == 1:
+                    manifest = matches[0]
+                elif len(matches) > 1:
+                    return {"success": False, "message": f"能力 {requested} 匹配到 {len(matches)} 个工作流，请指定 workflow_registry_id。"}
+                else:
+                    return {"success": False, "message": f"没有找到能力为 {requested} 的已登记工作流；逐镜头模式需要参数清单。"}
+            capability = manifest.get("capability")
+            if capability not in {"video.text2video", "video.image2video", "video.reference2video"}:
+                return {"success": False, "message": f"逐镜头视频任务不能使用工作流能力：{capability}"}
+            params_list = [item for item in manifest.get("params", []) if isinstance(item, dict)]
+            declared = {item.get("name") for item in params_list}
+            if None in declared or "" in declared:
+                return {"success": False, "message": "工作流参数声明缺少有效 name。"}
+            base_params = task.get("workflow_params") or {}
+            if not isinstance(base_params, dict):
+                return {"success": False, "message": "workflow_params 必须是对象。"}
+            unknown_base = set(base_params) - declared
+            if unknown_base:
+                return {"success": False, "message": "workflow_params 含未声明参数：" + ", ".join(sorted(unknown_base))}
+            if not ({"prompt", "visual_prompt"} & set(bindings)):
+                return {"success": False, "message": "逐镜头模式至少需要将 prompt 或 visual_prompt 映射到工作流参数，否则每个镜头会重复生成相同内容。"}
+            mapped_parameters = []
+            for field, parameter in bindings.items():
+                if field not in {"prompt", "visual_prompt", "duration_seconds", "shot_id"}:
+                    return {"success": False, "message": f"不支持的镜头字段映射：{field}"}
+                if not isinstance(parameter, str) or not parameter:
+                    return {"success": False, "message": f"镜头字段 {field} 的参数名无效"}
+                if parameter not in declared:
+                    return {"success": False, "message": f"镜头字段 {field} 映射到未声明参数：{parameter}"}
+                mapped_parameters.append(parameter)
+            if len(mapped_parameters) != len(set(mapped_parameters)):
+                return {"success": False, "message": "多个镜头字段映射到了同一个工作流参数，逐镜头输入会相互覆盖。"}
+            assets = task.get("workflow_assets") or context.get("workflow_assets") or {}
+            if not isinstance(assets, dict):
+                return {"success": False, "message": "workflow_assets 必须是对象。"}
+            # Reject bad parameter types before the first network request.
+            for field, parameter in bindings.items():
+                value = {
+                    "prompt": "preflight prompt",
+                    "visual_prompt": "preflight visual prompt",
+                    "duration_seconds": 5.0,
+                    "shot_id": "preflight-shot",
+                }[field]
+                declaration = next(item for item in params_list if item.get("name") == parameter)
+                expected = declaration.get("type")
+                if expected in {"string", "text"} and not isinstance(value, str):
+                    return {"success": False, "message": f"参数 {parameter} 声明为 {expected}，但镜头字段 {field} 类型不匹配。"}
+                if expected in {"number", "float", "integer", "int"} and not isinstance(value, (int, float)):
+                    return {"success": False, "message": f"参数 {parameter} 声明为 {expected}，但镜头字段 {field} 类型不匹配。"}
+                if field == "duration_seconds" and expected in {"integer", "int"}:
+                    jobs = context.get("shot_batch_jobs") or []
+                    non_integral = [
+                        job.get("shot_id", "?") for job in jobs
+                        if isinstance(job, dict)
+                        and (not isinstance(job.get("duration_seconds"), (int, float))
+                             or not float(job["duration_seconds"]).is_integer())
+                    ]
+                    if non_integral:
+                        return {
+                            "success": False,
+                            "message": f"时长参数 {parameter} 是整数类型，但以下镜头时长包含小数：{', '.join(map(str, non_integral[:8]))}。"
+                        }
+            # Compile once before launching the batch to validate graph structure,
+            # asset references, and static parameters for every upcoming shot.
+            compile_workflow(manifest, params=base_params, assets=assets)
+            return {
+                "success": True,
+                "workflow_id": manifest.get("id"),
+                "capability": capability,
+                "declared_params": sorted(declared),
+                "shot_bindings": dict(bindings),
+            }
+        except (WorkflowManifestError, TypeError, ValueError) as exc:
+            return {"success": False, "message": f"逐镜头工作流预检查失败：{exc}"}
+
     def execute(self, model, task, context):
         workflow, error = self._workflow(task, context)
         if error:
             return AdapterResult(False, error)
+        budget_report = None
+        try:
+            budget = budget_from_task(task)
+            if budget is not None:
+                workflow, budget_report = apply_budget_to_graph(workflow, budget)
+        except (TypeError, ValueError, KeyError) as exc:
+            return AdapterResult(False, f"本地资源预算配置无效：{exc}")
         reference_report = {"success": True, "bound": 0, "warnings": []}
         references = task.get("character_references") or context.get("character_references") or []
         if references:
@@ -65,7 +251,7 @@ class ComfyUIAdapter(BaseAdapter):
             pid = result.get('prompt_id')
             if not pid:
                 return AdapterResult(False, 'ComfyUI 未返回 prompt_id。', data=result)
-            return AdapterResult(True, 'ComfyUI 工作流已提交', data={'prompt_id': pid, 'queued': True, 'reference_report': reference_report})
+            return AdapterResult(True, 'ComfyUI 工作流已提交', data={'prompt_id': pid, 'queued': True, 'reference_report': reference_report, 'resource_budget': budget_report})
         except Exception as e:
             detail = ''
             if isinstance(e, HTTPError):
@@ -131,14 +317,24 @@ class ComfyUIAdapter(BaseAdapter):
                 safe_name = os.path.basename(ref['filename'])
                 stem, ext = os.path.splitext(safe_name)
                 target = os.path.join(output_dir, f"{stem}_{ref['node_id']}_{uuid.uuid4().hex[:6]}{ext.lower()}")
-                with open(target, 'wb') as f:
-                    f.write(content)
-                if os.path.isfile(target) and os.path.getsize(target) > 0:
-                    saved.append({'path': os.path.abspath(target), 'kind': ref['kind'],
-                                  'size': os.path.getsize(target), 'source_filename': safe_name})
-                else:
-                    try: os.remove(target)
-                    except OSError: pass
+                fd, temporary = tempfile.mkstemp(prefix='.comfyui-output-', suffix=ext.lower(), dir=output_dir)
+                try:
+                    with os.fdopen(fd, 'wb') as f:
+                        f.write(content)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    if os.path.isfile(temporary) and os.path.getsize(temporary) > 0:
+                        os.replace(temporary, target)
+                    if os.path.isfile(target) and os.path.getsize(target) > 0:
+                        saved.append({'path': os.path.abspath(target), 'kind': ref['kind'],
+                                      'size': os.path.getsize(target), 'source_filename': safe_name})
+                    else:
+                        try: os.remove(target)
+                        except OSError: pass
+                finally:
+                    if os.path.exists(temporary):
+                        try: os.remove(temporary)
+                        except OSError: pass
             except Exception:
                 continue
         return saved
@@ -152,8 +348,16 @@ class ComfyUIAdapter(BaseAdapter):
         if not submitted.success:
             return submitted
         prompt_id = submitted.data.get('prompt_id')
-        completed = self.wait(model, prompt_id, timeout=task.get('timeout', 1800),
-                              interval=task.get('poll_interval', 2))
+        try:
+            timeout = float(task.get('timeout', 1800))
+            interval = float(task.get('poll_interval', 2))
+            if not (0 < timeout <= 7200):
+                raise ValueError('timeout 必须大于 0 且不超过 7200 秒')
+            if not (0 < interval <= 10):
+                raise ValueError('poll_interval 必须大于 0 且不超过 10 秒')
+        except (TypeError, ValueError) as exc:
+            return AdapterResult(False, f'ComfyUI 等待参数无效：{exc}', data={'prompt_id': prompt_id})
+        completed = self.wait(model, prompt_id, timeout=timeout, interval=interval)
         if not completed.success:
             return completed
         refs = completed.outputs or self._output_refs(completed.data.get('outputs') or {})
@@ -174,4 +378,5 @@ class ComfyUIAdapter(BaseAdapter):
             message += f" 角色参考图提示：{len(reference_report['warnings'])} 项未注入，请检查工作流节点标记。"
         return AdapterResult(True, message, outputs=saved,
                              data={'prompt_id': prompt_id, 'output_refs': refs,
-                                   'completed': True, 'reference_report': reference_report})
+                                   'completed': True, 'reference_report': reference_report,
+                                   'resource_budget': submitted.data.get('resource_budget')})
