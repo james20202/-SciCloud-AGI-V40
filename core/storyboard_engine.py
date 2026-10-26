@@ -35,6 +35,8 @@ class StoryboardDirector:
         raw_shots = plan.get('shots', [])
         if not isinstance(raw_shots, list):
             raise ValueError('导演计划 shots 必须是列表')
+        if not raw_shots:
+            raise ValueError('导演计划没有镜头，拒绝创建空分镜')
         shots=[]
         seen_ids=set()
         characters=plan.get('characters',[]); scenes=plan.get('scenes',[])
@@ -94,6 +96,23 @@ class StoryboardDirector:
             }
             # Normalize at the storyboard boundary while preserving legacy fields.
             shots.append(normalize_shot(shot, i))
+        intent = plan.get('intent', {})
+        if isinstance(intent, dict):
+            target_raw = intent.get('duration_seconds', intent.get('target_duration_seconds'))
+            if target_raw is not None:
+                try:
+                    target_duration = float(target_raw)
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise ValueError('导演计划目标时长无效，拒绝创建分镜') from exc
+                if not math.isfinite(target_duration) or target_duration <= 0:
+                    raise ValueError('导演计划目标时长必须是有限正数')
+                actual_duration = sum(shot['duration'] for shot in shots)
+                tolerance = max(0.1, target_duration * 0.005)
+                if abs(actual_duration - target_duration) > tolerance:
+                    raise ValueError(
+                        f'分镜总时长 {actual_duration:.3f}s 与目标 {target_duration:.3f}s 不匹配，'
+                        f'允许误差 ±{tolerance:.3f}s'
+                    )
         storyboard={'storyboard_id':'STORYBOARD-'+uuid4().hex[:8].upper(),'version':1,'created_at':datetime.now().isoformat(timespec='seconds'),'updated_at':datetime.now().isoformat(timespec='seconds'),'plan_id':plan.get('plan_id'),'title':plan.get('title'),'shots':shots}
         return self.save(storyboard)
 
