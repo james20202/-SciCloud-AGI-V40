@@ -22,6 +22,16 @@ def test_episode_run_persists_unexpected_director_exception(tmp_path, monkeypatc
         raise RuntimeError("simulated executor crash")
 
     monkeypatch.setattr(episode_module.auto_director, "run", crash)
+    monkeypatch.setattr(
+        episode_module.workflow_engine,
+        "load",
+        lambda workflow_id: {
+            "workflow_id": workflow_id,
+            "status": "ready",
+            "paused": False,
+            "tasks": [{"id": "TASK-1", "status": "ready", "progress": 0}],
+        },
+    )
     result = engine.run("EP-EXCEPTION")
 
     assert result["status"] == "blocked"
