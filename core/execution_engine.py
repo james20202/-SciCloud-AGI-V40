@@ -446,7 +446,21 @@ class ExecutionEngine:
                 workflow_engine.fail_task(wid,task_id,message)
             except Exception:
                 pass
+            # Preserve partial shot-batch diagnostics even when a later shot fails.
+            # Otherwise the UI loses the checkpoint location and cannot explain how
+            # much work completed, despite the batch JSON already being on disk.
             failure={'success':False,'message':message,'task_id':task_id,'workflow_id':wid,'outputs':[]}
+            try:
+                saved_wf=workflow_engine.load(wid)
+                saved_task=next(item for item in saved_wf.get('tasks',[]) if item.get('id')==task_id)
+                for key in ('shot_batch_manifest_path','shot_batch_progress'):
+                    if task.get(key) is not None:
+                        saved_task[key]=task[key]
+                        failure[key]=task[key]
+                saved_task['last_error']=message
+                workflow_engine.save(saved_wf)
+            except Exception:
+                pass
             self.last_result=failure
             return failure
         valid_outputs=[]
