@@ -5,15 +5,30 @@ https://github.com/tccnnd/Comic-drama (docs/canonical_timeline.md).
 This module is an independent implementation adapted to SciCloud's episode schema.
 """
 import json
+import math
 import os
 from datetime import datetime
 
 
 def _number(value, fallback=0.0):
+    """Return a finite, non-negative timeline number.
+
+    JSON's default encoder permits NaN and Infinity even though they are not
+    valid JSON numbers. Normalize both the requested value and fallback so
+    malformed model/metadata values cannot poison every subsequent timecode.
+    """
     try:
-        return max(0.0, float(value))
-    except (TypeError, ValueError):
-        return float(fallback)
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        number = math.nan
+    if not math.isfinite(number):
+        try:
+            number = float(fallback)
+        except (TypeError, ValueError, OverflowError):
+            number = 0.0
+    if not math.isfinite(number):
+        number = 0.0
+    return max(0.0, number)
 
 
 def build_episode_timeline(episode, shot_job, clip_records, output_path, final_video=None):
@@ -28,7 +43,14 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
         duration = _number(record.get("duration_seconds"), 0)
         if duration <= 0:
             spec = record.get("spec") or {}
-            duration = _number(spec.get("duration_seconds", spec.get("duration", 5)), 5)
+            # Prefer the first positive finite duration, falling through when a
+            # higher-priority field exists but contains NaN/Infinity/zero.
+            duration = 0.0
+            for candidate in (spec.get("duration_seconds"), spec.get("duration"), 5):
+                candidate_duration = _number(candidate, 0)
+                if candidate_duration > 0:
+                    duration = candidate_duration
+                    break
         source = os.path.abspath(record.get("path", ""))
         is_real_video = record.get("source_kind") == "video"
         if is_real_video:
@@ -112,5 +134,5 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(timeline, f, ensure_ascii=False, indent=2)
+        json.dump(timeline, f, ensure_ascii=False, indent=2, allow_nan=False)
     return {"success": True, "path": os.path.abspath(output_path), "timeline": timeline}
