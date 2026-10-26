@@ -236,7 +236,7 @@ class EpisodePipeline:
                 return self._block(d,'assemble','剧集目标时长无效，拒绝生成成片')
             if not math.isfinite(expected_duration) or expected_duration <= 0:
                 return self._block(d,'assemble','剧集目标时长必须是有限正数，拒绝生成成片')
-            tolerance=max(3.0,expected_duration*0.08)
+            tolerance=max(0.1,expected_duration*0.005)
             if not math.isfinite(total_duration) or abs(total_duration-expected_duration)>tolerance:
                 return self._block(
                     d,'assemble',
@@ -275,7 +275,7 @@ class EpisodePipeline:
         basic=bool(p and os.path.isfile(p) and os.path.getsize(p)>0)
         probe=local_media_engine.probe(p) if basic else {'success':False,'message':'成片文件不存在或为空'}
         actual=float(report.get('duration_seconds') or probe.get('duration_seconds') or 0)
-        tolerance=max(3.0,expected*0.08)
+        tolerance=max(0.1,expected*0.005)
         duration_ok=bool(probe.get('success') and (expected<=0 or abs(actual-expected)<=tolerance))
         has_video_stream=bool(report.get('has_video_stream') or (probe.get('success') and any(
             s.get('codec_type')=='video' for s in (probe.get('data') or {}).get('streams', []))))
