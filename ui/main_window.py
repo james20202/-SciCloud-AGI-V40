@@ -1,3 +1,7 @@
+import getpass
+import os
+import shutil
+
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QFrame, QLabel, QToolButton, QMenu, QSizePolicy, QSpacerItem
 from ui.pages.production_dashboard import ProductionDashboard
@@ -58,12 +62,25 @@ class MainWindow(QMainWindow):
         brand=QLabel('SciCloud AGI V40'); brand.setObjectName('Brand'); l.addWidget(brand)
         sub=QLabel('AI导演·让创意变成现实'); sub.setObjectName('TopSub'); l.addWidget(sub)
         l.addStretch()
-        status=QLabel('●  AI导演在线'); status.setObjectName('StatusPill'); l.addWidget(status)
+        # 不再写死在线状态、存储占用和固定用户名：在线状态须由本机诊断确认，
+        # 存储用应用所在磁盘的实际占用，用户用本机登录用户；诊断前只显示待诊断。
+        status=QLabel('●  本地模式 · 待诊断'); status.setObjectName('StatusPill'); status.setToolTip('未运行本机诊断，请在系统中心运行诊断后查看 FFmpeg / Ollama / ComfyUI 状态'); l.addWidget(status)
         for t,k in [('项目','项目'),('资源','资产'),('模型','模型')]:
             b=QToolButton(); b.setObjectName('TopAction'); b.setText(t); b.clicked.connect(lambda _=False,kk=k:self.select(kk)); l.addWidget(b)
-        storage=QLabel('存储 68%'); storage.setObjectName('StorageChip'); l.addWidget(storage)
-        avatar=QLabel('JM'); avatar.setObjectName('UserAvatar'); l.addWidget(avatar)
-        user=QLabel('jm zhao'); user.setObjectName('UserChip'); l.addWidget(user)
+        try:
+            app_root=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            disk=shutil.disk_usage(app_root)
+            storage_text=f'存储 {100 * (disk.total - disk.free) / disk.total:.0f}%'
+        except Exception:
+            storage_text='存储 --'
+        storage=QLabel(storage_text); storage.setObjectName('StorageChip'); l.addWidget(storage)
+        try:
+            username=getpass.getuser() or '本地用户'
+        except Exception:
+            username='本地用户'
+        avatar_text=username[:2].upper() if len(username) >= 2 else username.upper()
+        avatar=QLabel(avatar_text); avatar.setObjectName('UserAvatar'); l.addWidget(avatar)
+        user=QLabel(username); user.setObjectName('UserChip'); l.addWidget(user)
         return bar
 
     def build_dock(self):

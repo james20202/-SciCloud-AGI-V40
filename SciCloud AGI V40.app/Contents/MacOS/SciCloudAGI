@@ -8,4 +8,14 @@ for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/pytho
 done
 if [ -z "$PYTHON" ]; then PYTHON="$(command -v python3 || true)"; fi
 if [ -z "$PYTHON" ]; then osascript -e 'display dialog "未找到 Python 3，请先安装 Python 3。" buttons {"好"}'; exit 1; fi
+# 必需依赖缺失时直接弹窗并退出，不再只把报错写进日志让用户干等。
+if ! "$PYTHON" -c "import PySide6, PIL" >> "$APPROOT/logs/app.log" 2>&1; then
+  osascript -e 'display dialog "缺少运行依赖（PySide6 / Pillow），请先运行：python3 -m pip install -r requirements.txt，详情见 logs/app.log。" buttons {"好"}'
+  exit 1
+fi
+# 生产工具缺失不阻止打开界面，但要明确提示，而不是等生产时才失败。
+if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+  echo "警告：未找到 FFmpeg/FFprobe，剪辑与质检功能将受限。" >> "$APPROOT/logs/app.log"
+  osascript -e 'display dialog "未找到 FFmpeg/FFprobe，剪辑与质检功能将受限，可在系统中心查看本机诊断。" buttons {"继续"} default button "继续"' || true
+fi
 exec "$PYTHON" "$APPROOT/main.py" >> "$APPROOT/logs/app.log" 2>&1
