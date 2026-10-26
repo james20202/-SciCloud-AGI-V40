@@ -310,8 +310,12 @@ class ExecutionEngine:
                     'output_path',
                     os.path.join(PROJECT_DIR,'output','voice',safe_wid,f'{safe_tid}.wav')
                 )
+            batch_requested = (
+                task.get('shot_batch_enabled') is True
+                or (isinstance(task.get('shot_param_bindings'), dict) and bool(task.get('shot_param_bindings')))
+            )
             if (task.get('type') == 'video' and model.get('adapter') == 'comfyui'
-                    and task.get('shot_batch_enabled') is True
+                    and batch_requested
                     and callable(getattr(adapter, 'render', None))):
                 # Explicit opt-in: execute each planned shot as an isolated ComfyUI
                 # submission, persist per-shot checkpoints, and resume completed shots.
