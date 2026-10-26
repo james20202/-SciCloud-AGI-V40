@@ -34,6 +34,14 @@ class EpisodeAudioEngine:
             if end <= start:
                 continue
             items = self._dialogue_items(spec.get("dialogue"))
+            # Narration/voiceover is a separate canonical shot field. Previously only
+            # dialogue was scheduled, so generated narration vanished before subtitles
+            # and local TTS even though the storyboard preserved it.
+            voiceover_items = self._dialogue_items(spec.get("voiceover", spec.get("narration")))
+            for item in voiceover_items:
+                item = dict(item)
+                item.setdefault("speaker", "旁白")
+                items.append(item)
             shot = by_id.get(shot_id, {})
             existing_audio = next((a for a in shot.get("artifacts", [])
                 if a.get("kind") == "audio" and a.get("path") and os.path.isfile(a["path"])

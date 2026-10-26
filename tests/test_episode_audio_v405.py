@@ -94,3 +94,27 @@ def test_mix_audio_with_video_preserves_existing_audio(tmp_path, monkeypatch):
     assert "-filter_complex" in command
     assert "amix=inputs=2" in command[command.index("-filter_complex") + 1]
     assert "[0:a:0]volume=0.75[base]" in command[command.index("-filter_complex") + 1]
+
+
+def test_episode_audio_engine_includes_voiceover_in_subtitle_timeline(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.episode_audio_engine.local_tts_engine.status", lambda: {"available": False})
+    engine = EpisodeAudioEngine()
+    result = engine.prepare(
+        {"shots": []},
+        [{
+            "shot_id": "S1",
+            "start_seconds": 0,
+            "duration_seconds": 6,
+            "spec": {
+                "dialogue": {"speaker": "沈砚", "text": "这把剑认得我。"},
+                "voiceover": "三百年前，仙门一夜覆灭。",
+            },
+        }],
+        str(tmp_path / "audio"),
+        6,
+    )
+    assert result["success"] is True
+    assert result["subtitle_count"] == 2
+    subtitle_text = open(result["subtitle_path"], encoding="utf-8").read()
+    assert "沈砚：这把剑认得我。" in subtitle_text
+    assert "旁白：三百年前，仙门一夜覆灭。" in subtitle_text
