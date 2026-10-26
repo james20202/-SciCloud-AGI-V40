@@ -8,6 +8,10 @@ class ModelCenter(QWidget):
         root=QVBoxLayout(self); root.setContentsMargins(28,24,28,24); root.setSpacing(12)
         title=QLabel('🧠 Model Hub'); title.setObjectName('PageTitle'); root.addWidget(title)
         root.addWidget(QLabel('V40.3：模型与本地执行适配器中心。这里只登记和检测真实能力，不把“注册成功”伪装成“已经生成”。'))
+        # Cloud LLM is env-configured, not a Model Hub entry: one static
+        # note only, no new navigation, no rendering changes.
+        cloud_note=QLabel('云端 LLM（可选，默认关闭，仅用于导演计划文字生成，不用于出图/出视频）：通过环境变量 SCICLOUD_CLOUD_LLM_ENABLED / SCICLOUD_CLOUD_LLM_BASE_URL / SCICLOUD_CLOUD_LLM_MODEL / SCICLOUD_CLOUD_LLM_API_KEY 配置，指向 OpenAI 兼容转发口（如 127.0.0.1:18899/v1）；任何云端失败都会自动回落本地 Ollama，再回落本地规则。提示词会发往上游，不适合敏感内容。')
+        cloud_note.setObjectName('Muted'); cloud_note.setWordWrap(True); root.addWidget(cloud_note)
         bar=QHBoxLayout()
         for text,fn,obj in [('刷新',self.refresh,'Secondary'),('检测连接',self.test_selected,'Secondary'),('启用 / 停用',self.toggle,'Secondary')]:
             b=QPushButton(text); b.setObjectName(obj); b.clicked.connect(fn); bar.addWidget(b)

@@ -3,6 +3,8 @@ import os
 import urllib.error
 import urllib.request
 
+from core.cloud_llm_adapter import CloudLLMAdapter
+
 
 class LocalOllamaDirector:
     """Optional localhost-only creative enrichment. Deterministic plans remain the safe fallback."""
@@ -168,7 +170,164 @@ class LocalOllamaDirector:
             raise ValueError(f'第 {batch_index} 批人物或场景字段不是列表')
         return data
 
+    def _validate_cloud_batch(self, data, batch, batch_index):
+        """Same strict schema check as the Ollama batch path."""
+        if not isinstance(data, dict):
+            raise ValueError(f'第 {batch_index} 批云端模型返回不是 JSON 对象')
+        items = data.get('shot_items')
+        if not isinstance(items, list) or len(items) != len(batch):
+            raise ValueError(f'第 {batch_index} 批云端模型镜头文本数量与输入不匹配')
+        expected_ids = [x.get('id') for x in batch]
+        returned_ids = [x.get('id') for x in items if isinstance(x, dict)]
+        if len(returned_ids) != len(items) or returned_ids != expected_ids:
+            raise ValueError(f'第 {batch_index} 批云端模型镜头 ID 缺失、重复、乱序或与原计划不一致')
+        if not isinstance(data.get('characters', []), list) or not isinstance(data.get('scenes', []), list):
+            raise ValueError(f'第 {batch_index} 批云端模型人物或场景字段不是列表')
+        return data
+
+    def _try_cloud_enrich(self, plan):
+        """Try the optional cloud LLM path; never raise into the caller.
+
+        Returns ``(result, error)`` where exactly one side is set:
+        - ``result`` is the generation dict when the cloud path fully
+          succeeded (text changes are applied only after every batch
+          validated, exactly like the Ollama path).
+        - ``error`` is ``{'error': code, 'detail': str}`` when the cloud
+          path was attempted and failed, so the caller can record it
+          and silently fall back to Ollama, then to rule fallback.
+        - ``(None, None)`` when the cloud adapter is disabled or not
+          configured: behaviour is then exactly the old Ollama-only path.
+        """
+        adapter = CloudLLMAdapter()
+        if not adapter.enabled:
+            return None, None
+        if not adapter.is_configured:
+            return None, {'error': 'cloud_not_configured',
+                          'detail': '云端 LLM 已开启但缺少 BASE_URL 或 MODEL 配置'}
+        if not isinstance(plan, dict):
+            return None, {'error': 'cloud_invalid_response', 'detail': '导演计划不是对象'}
+        shots = plan.get('shots', [])
+        if not isinstance(shots, list) or not shots:
+            return None, {'error': 'cloud_invalid_response', 'detail': '导演计划没有可优化的镜头'}
+        try:
+            batch_size = 24
+            batches = [shots[i:i + batch_size] for i in range(0, len(shots), batch_size)]
+            all_shot_updates = {}
+            char_updates = {}
+            scene_updates = {}
+            story = ''
+            hook = ''
+            common = {
+                'idea': plan.get('idea', ''),
+                'genre': plan.get('intent', {}).get('genre', '原创短剧'),
+                'target_duration_seconds': plan.get('intent', {}).get('duration_seconds', 60),
+                'aspect_ratio': plan.get('intent', {}).get('aspect_ratio', '9:16'),
+                'logline': plan.get('story', {}).get('logline', ''),
+                'hook': plan.get('intent', {}).get('hook', ''),
+                'characters': [{'id': x.get('id'), 'name': x.get('name'), 'description': x.get('description', '')} for x in plan.get('characters', []) if isinstance(x, dict)],
+                'scenes': [{'id': x.get('id'), 'name': x.get('name'), 'purpose': x.get('purpose', '')} for x in plan.get('scenes', []) if isinstance(x, dict)],
+            }
+            for batch_index, batch in enumerate(batches, 1):
+                payload = dict(common)
+                payload['batch_index'] = batch_index
+                payload['batch_count'] = len(batches)
+                payload['shots'] = [{'index': x.get('index'), 'id': x.get('id'), 'duration': x.get('duration'), 'type': x.get('type'), 'action': x.get('action', '')} for x in batch]
+                prompt = (
+                    '你是中文短剧的专业编剧和分镜导演。基于输入内容优化创意文本，保持故事因果、人物一致性、场景连续性。'
+                    '只输出符合给定 JSON schema 的 JSON，不要 Markdown，不要输出其他文字。'
+                    '不要输出或修改任何 ID 和时长。shot_items 必须与本批输入 shots 数量完全相同并按原顺序对应。'
+                    '每个 visual_prompt 要可直接用于图像生成，包含主体、动作、环境、光线、构图和风格，并严格遵循输入 aspect_ratio；'
+                    'dialogue 要短且自然，无对白时可为空字符串。'
+                    'JSON schema: {"logline":string,"hook":string,"characters":[{"id":string,"description":string}],"scenes":[{"id":string,"purpose":string}],"shot_items":[{"id":string,"visual_prompt":string,"action":string,"dialogue":string,"director_note":string}]}\n'
+                    'INPUT=' + json.dumps(payload, ensure_ascii=False)
+                )
+                result = adapter.generate_text(
+                    prompt,
+                    system_prompt='你是中文短剧的专业编剧和分镜导演，只输出 JSON，不要任何解释或 Markdown。')
+                if not result.get('ok'):
+                    return None, {'error': result.get('error', 'cloud_error'),
+                                  'detail': result.get('detail', '云端模型调用失败')}
+                try:
+                    data = json.loads(result['text'])
+                except Exception as exc:
+                    return None, {'error': 'cloud_invalid_json',
+                                  'detail': f'第 {batch_index} 批云端模型返回不是合法 JSON：{exc}'}
+                try:
+                    data = self._validate_cloud_batch(data, batch, batch_index)
+                except ValueError as exc:
+                    return None, {'error': 'cloud_invalid_schema', 'detail': str(exc)}
+                if not story:
+                    story = self._text(data.get('logline'))
+                if not hook:
+                    hook = self._text(data.get('hook'))
+                for item in data.get('characters', []):
+                    if isinstance(item, dict) and item.get('id') and self._text(item.get('description')):
+                        char_updates.setdefault(item['id'], self._text(item['description']))
+                for item in data.get('scenes', []):
+                    if isinstance(item, dict) and item.get('id') and self._text(item.get('purpose')):
+                        scene_updates.setdefault(item['id'], self._text(item['purpose']))
+                for item in data['shot_items']:
+                    all_shot_updates[item['id']] = {key: self._text(item.get(key)) for key in ('visual_prompt', 'action', 'dialogue', 'director_note')}
+            # All batches validated: only now mutate the plan.
+            if story:
+                plan.setdefault('story', {})['logline'] = story
+            if hook:
+                plan.setdefault('intent', {})['hook'] = hook
+            char_map = {x.get('id'): x for x in plan.get('characters', []) if isinstance(x, dict) and x.get('id')}
+            scene_map = {x.get('id'): x for x in plan.get('scenes', []) if isinstance(x, dict) and x.get('id')}
+            shot_map = {x.get('id'): x for x in shots if isinstance(x, dict) and x.get('id')}
+            for key, value in char_updates.items():
+                if key in char_map:
+                    char_map[key]['description'] = value
+            for key, value in scene_updates.items():
+                if key in scene_map:
+                    scene_map[key]['purpose'] = value
+            for shot_id, updates in all_shot_updates.items():
+                target = shot_map[shot_id]
+                for key, value in updates.items():
+                    if value:
+                        target[key] = value
+            return {
+                'mode': 'cloud_llm', 'provider': 'cloud', 'model': adapter.model,
+                'source': 'cloud', 'diagnosis': 'ok', 'diagnosis_detail': '',
+                'cloud_attempted': True,
+                'message': f'云端模型已优化全部 {len(all_shot_updates)} 个镜头文本（{len(batches)} 批）',
+                'shot_count': len(all_shot_updates), 'batch_count': len(batches)
+            }, None
+        except Exception as exc:
+            return None, {'error': 'cloud_error', 'detail': str(exc)}
+
     def enrich_plan(self, plan):
+        """Text enrichment with cloud-first, Ollama, then rule fallback.
+
+        Cloud is attempted only when explicitly enabled and configured.
+        Any cloud failure is recorded on the returned generation dict
+        (``cloud_error`` / ``cloud_error_detail``) and the plan still
+        goes through the unchanged Ollama path, then the deterministic
+        rule fallback, so a cloud failure can never fail plan creation.
+        ``source`` is always one of ``cloud`` / ``ollama`` / ``rule``.
+        """
+        cloud_result, cloud_error = self._try_cloud_enrich(plan)
+        if cloud_result is not None:
+            return cloud_result
+        result = self._enrich_via_ollama(plan)
+        if not isinstance(result, dict):
+            result = {}
+        if cloud_error is not None:
+            result = dict(result, cloud_attempted=True,
+                          cloud_error=cloud_error.get('error', 'cloud_error'),
+                          cloud_error_detail=cloud_error.get('detail', ''))
+        else:
+            result = dict(result, cloud_attempted=False)
+        if result.get('mode') == 'local_ollama':
+            result['source'] = 'ollama'
+        elif result.get('mode') == 'deterministic_fallback':
+            result['source'] = 'rule'
+        else:
+            result.setdefault('source', 'rule')
+        return result
+
+    def _enrich_via_ollama(self, plan):
         """Enrich every shot in bounded batches; commit text changes only if all batches validate.
 
         A batch whose model output is invalid JSON or fails schema
