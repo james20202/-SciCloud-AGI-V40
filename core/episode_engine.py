@@ -87,10 +87,28 @@ class EpisodeEngine:
 
     def run(self, episode_id, max_steps=50):
         ep = self.load(episode_id)
+        try:
+            limit = int(max_steps)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError('max_steps 必须是 1 到 1000 之间的整数') from exc
+        if isinstance(max_steps, bool) or limit < 1 or limit > 1000 or str(limit) != str(max_steps).strip():
+            raise ValueError('max_steps 必须是 1 到 1000 之间的整数')
         ep['attempt'] = int(ep.get('attempt', 0)) + 1
         ep['status'] = 'running'
         self._save(ep)
-        result = auto_director.run(ep['workflow_id'], max_steps=max_steps)
+        try:
+            result = auto_director.run(ep['workflow_id'], max_steps=limit)
+            if not isinstance(result, dict):
+                result = {'success': False, 'message': '自动导演返回了无效结果'}
+        except Exception as exc:
+            # Persist a terminal, resumable failure instead of leaving the episode
+            # permanently marked running after an unexpected executor exception.
+            result = {
+                'success': False,
+                'message': f'自动导演执行异常：{type(exc).__name__}: {exc}',
+                'exception_type': type(exc).__name__,
+                'recoverable': True,
+            }
         ep['last_result'] = result
         self._save(ep)
         return self.status(episode_id)
