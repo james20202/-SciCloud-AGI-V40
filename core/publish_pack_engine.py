@@ -1,6 +1,7 @@
 import os, json, shutil, zipfile, hashlib
 from datetime import datetime
 from core.config import PROJECT_DIR, OUTPUT_DIR
+from core.media_quality_engine import media_quality_engine
 
 
 class PublishPackEngine:
@@ -16,6 +17,18 @@ class PublishPackEngine:
         src=os.path.join(PROJECT_DIR,'episodes',episode_id+'.json')
         if not os.path.exists(src):
             return {'success':False,'message':'Episode 不存在'}
+        if not final_video or not os.path.isfile(final_video) or os.path.getsize(final_video)<=0:
+            return {'success':False,'message':'最终视频不存在或为空，拒绝生成发布包'}
+        try:
+            with open(src,encoding='utf-8') as stream:
+                episode_record=json.load(stream)
+        except (OSError, json.JSONDecodeError) as exc:
+            return {'success':False,'message':f'Episode 记录无法读取：{exc}'}
+        expected_duration=episode_record.get('duration_seconds')
+        qc_report=media_quality_engine.inspect(final_video,expected_duration=expected_duration)
+        if not isinstance(qc_report,dict) or qc_report.get('passed') is not True:
+            return {'success':False,'message':'最终视频未通过发布前媒体质检，拒绝生成发布包',
+                    'quality_report':qc_report if isinstance(qc_report,dict) else None}
         outdir=os.path.join(OUTPUT_DIR,'publish',episode_id)
         os.makedirs(outdir,exist_ok=True)
         copied=[]
