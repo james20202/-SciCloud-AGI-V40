@@ -60,3 +60,77 @@ def test_missing_ollama_model_returns_clear_fallback(monkeypatch):
     status = engine.enrich_plan(plan)
     assert status["mode"] == "deterministic_fallback"
     assert "未运行" in status["message"]
+
+
+def test_local_ollama_enriches_shots_beyond_first_batch(monkeypatch):
+    engine = LocalOllamaDirector()
+    monkeypatch.setattr(engine, "_installed_model", lambda: "qwen2.5:3b")
+    plan = sample_plan()
+    plan["shots"] = [
+        {"id": f"SHOT-{index:04d}", "index": index, "duration": 1, "type": "镜头",
+         "visual_prompt": f"原始画面{index}", "action": "原始动作", "dialogue": ""}
+        for index in range(1, 27)
+    ]
+    calls = []
+
+    def respond(url, payload=None, timeout=3):
+        request_data = json.loads(payload["prompt"].split("INPUT=", 1)[1])
+        calls.append(request_data)
+        return {"response": json.dumps({
+            "logline": "批次化优化后的梗概",
+            "hook": "优化后的钩子",
+            "characters": [],
+            "scenes": [],
+            "shot_items": [
+                {"id": shot["id"], "visual_prompt": f"具体画面：{shot['id']}",
+                 "action": f"具体动作：{shot['id']}", "dialogue": f"对白：{shot['id']}",
+                 "director_note": "保持连续性"}
+                for shot in request_data["shots"]
+            ],
+        }, ensure_ascii=False)}
+
+    monkeypatch.setattr(engine, "_request_json", respond)
+    result = engine.enrich_plan(plan)
+
+    assert result["mode"] == "local_ollama"
+    assert result["shot_count"] == 26
+    assert result["batch_count"] == 2
+    assert [len(call["shots"]) for call in calls] == [24, 2]
+    assert plan["shots"][23]["visual_prompt"] == "具体画面：SHOT-0024"
+    assert plan["shots"][24]["visual_prompt"] == "具体画面：SHOT-0025"
+    assert plan["shots"][25]["dialogue"] == "对白：SHOT-0026"
+    assert [shot["duration"] for shot in plan["shots"]] == [1] * 26
+
+
+def test_local_ollama_later_batch_failure_does_not_partially_mutate_plan(monkeypatch):
+    engine = LocalOllamaDirector()
+    monkeypatch.setattr(engine, "_installed_model", lambda: "qwen2.5:3b")
+    plan = sample_plan()
+    plan["shots"] = [
+        {"id": f"SHOT-{index:04d}", "index": index, "duration": 1, "visual_prompt": f"原始{index}"}
+        for index in range(1, 26)
+    ]
+    before = copy.deepcopy(plan)
+    calls = 0
+
+    def respond(url, payload=None, timeout=3):
+        nonlocal calls
+        calls += 1
+        request_data = json.loads(payload["prompt"].split("INPUT=", 1)[1])
+        items = [
+            {"id": shot["id"], "visual_prompt": f"不应写入{shot['id']}", "action": "动作"}
+            for shot in request_data["shots"]
+        ]
+        if calls == 2:
+            items[0]["id"] = "WRONG-ID"
+        return {"response": json.dumps({
+            "logline": "不应写入", "hook": "不应写入",
+            "characters": [], "scenes": [], "shot_items": items,
+        }, ensure_ascii=False)}
+
+    monkeypatch.setattr(engine, "_request_json", respond)
+    result = engine.enrich_plan(plan)
+
+    assert result["mode"] == "deterministic_fallback"
+    assert calls == 2
+    assert plan == before
