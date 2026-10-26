@@ -4,7 +4,7 @@ from urllib import request, parse
 from urllib.error import HTTPError, URLError
 from core.adapters.base import BaseAdapter, AdapterResult
 from core.character_reference_comfyui import bind_character_references
-from core.comfyui_workflow_registry import compile_workflow, WorkflowManifestError, WorkflowRegistry
+from core.comfyui_workflow_registry import compile_workflow, validate_manifest, WorkflowManifestError, WorkflowRegistry
 from core.config import DATA_DIR
 from core.render_budget import budget_from_task, apply_budget_to_graph
 
