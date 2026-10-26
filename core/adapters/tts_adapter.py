@@ -32,12 +32,11 @@ class TTSCommandAdapter(BaseAdapter):
                 )
             output_path = os.path.abspath(os.path.expanduser(output_path))
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            has_output_placeholder = any('{output}' in arg for arg in args)
             args = [arg.replace('{output}', output_path) for arg in args]
-            if not any('{output}' in arg for arg in (cmd if isinstance(cmd, (list, tuple)) else [])):
-                # String commands have already been tokenized; check the parsed arguments
-                # before replacement so ordinary CLI tools can receive an explicit path.
-                if not any(arg == output_path for arg in args):
-                    args.append(output_path)
+            if not has_output_placeholder and output_path not in args:
+                # For simple CLI TTS tools that accept the destination as their last argument.
+                args.append(output_path)
 
             timeout = int(task.get('timeout', 900))
             if timeout <= 0 or timeout > 7200:
