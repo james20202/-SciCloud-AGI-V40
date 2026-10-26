@@ -195,6 +195,19 @@ class ComfyUIAdapter(BaseAdapter):
                     return {"success": False, "message": f"参数 {parameter} 声明为 {expected}，但镜头字段 {field} 类型不匹配。"}
                 if expected in {"number", "float", "integer", "int"} and not isinstance(value, (int, float)):
                     return {"success": False, "message": f"参数 {parameter} 声明为 {expected}，但镜头字段 {field} 类型不匹配。"}
+                if field == "duration_seconds" and expected in {"integer", "int"}:
+                    jobs = context.get("shot_batch_jobs") or []
+                    non_integral = [
+                        job.get("shot_id", "?") for job in jobs
+                        if isinstance(job, dict)
+                        and (not isinstance(job.get("duration_seconds"), (int, float))
+                             or not float(job["duration_seconds"]).is_integer())
+                    ]
+                    if non_integral:
+                        return {
+                            "success": False,
+                            "message": f"时长参数 {parameter} 是整数类型，但以下镜头时长包含小数：{', '.join(map(str, non_integral[:8]))}。"
+                        }
             # Compile once before launching the batch to validate graph structure,
             # asset references, and static parameters for every upcoming shot.
             compile_workflow(manifest, params=base_params, assets=assets)
