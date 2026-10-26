@@ -71,11 +71,61 @@ class EpisodePipeline:
         d['progress']=round((len(completed)+fractional)/len(self.STAGES)*100,1)
         d['status']='completed' if 'publish' in completed else ('blocked' if blocked else ('failed' if failed else ('running' if completed and d.get('stage') not in ('plan','shots') else ('running' if len(completed)>1 else 'ready'))))
         return self._save(d)
+    @staticmethod
+    def _validate_plan_shots(plan, target_duration=None):
+        """Reject malformed shot plans and duration drift before creating production state."""
+        if not isinstance(plan, dict):
+            raise ValueError('plan 必须是对象')
+        shots = plan.get('shots')
+        if not isinstance(shots, list) or not shots:
+            raise ValueError('shots 必须是非空列表')
+        seen = set()
+        total = 0.0
+        for index, shot in enumerate(shots, 1):
+            if not isinstance(shot, dict):
+                raise ValueError(f'第 {index} 个镜头必须是对象')
+            shot_id = shot.get('shot_id') or shot.get('id')
+            if not isinstance(shot_id, str) or not shot_id.strip():
+                raise ValueError(f'第 {index} 个镜头缺少有效 ID')
+            if shot_id in seen:
+                raise ValueError(f'镜头 ID 重复：{shot_id}')
+            seen.add(shot_id)
+            raw_duration = shot.get('duration_seconds', shot.get('duration', 5))
+            try:
+                duration = float(raw_duration)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f'镜头 {shot_id} 时长无效') from exc
+            if not math.isfinite(duration) or duration <= 0 or duration > 3600:
+                raise ValueError(f'镜头 {shot_id} 时长必须是有限正数且不超过 3600 秒')
+            total += duration
+        if not math.isfinite(total):
+            raise ValueError('镜头总时长不是有限数值')
+        if target_duration is not None:
+            try:
+                target = float(target_duration)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError('剧集目标时长无效') from exc
+            if not math.isfinite(target) or target <= 0:
+                raise ValueError('剧集目标时长必须是有限正数')
+            tolerance = max(0.1, target * 0.005)
+            if abs(total - target) > tolerance:
+                raise ValueError(
+                    f'镜头总时长 {total:.3f}s 与目标 {target:.3f}s 不匹配，'
+                    f'允许误差 ±{tolerance:.3f}s'
+                )
+        return {'shot_count': len(shots), 'planned_duration_seconds': round(total, 3)}
+
     def prepare_shots(self,eid):
         d=self.load(eid)
         plan=next((p for p in director_plan_engine.load_plans() if p.get('plan_id')==d['plan_id']),None)
         if not plan: return {'success':False,'message':'Director Plan 不存在'}
         if d.get('shot_run_id'): return {'success':True,'shot_run_id':d['shot_run_id'],'reused':True}
+        # Validate the director plan before persisting a resumable media job.
+        # This catches duration drift before expensive generation begins.
+        try:
+            self._validate_plan_shots(plan, d.get('duration_seconds'))
+        except ValueError as exc:
+            return {'success':False,'message':f'导演计划镜头契约校验失败：{exc}'}
         bible=shot_consistency_engine.build_bible(plan)
         shots=[]
         for i, original in enumerate(plan.get('shots',[]),1):
