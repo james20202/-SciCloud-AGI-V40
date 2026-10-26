@@ -3,7 +3,7 @@ import os
 import shutil
 
 from PySide6.QtCore import Qt, QPoint
-from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QFrame, QLabel, QToolButton, QMenu, QSizePolicy, QSpacerItem
+from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QFrame, QLabel, QToolButton, QMenu, QSizePolicy, QSpacerItem, QScrollArea
 from ui.pages.production_dashboard import ProductionDashboard
 from ui.pages.director_plan import DirectorPlanPage
 from ui.pages.storyboard_director import StoryboardDirectorPage
@@ -31,6 +31,19 @@ try:
 except Exception:
     PipelineCenter = None
 
+# Grouped navigation: (section label, [(button label, page key), ...]).
+# Every registered page appears here, so no page is reachable only through
+# the "更多" menu. Pages that are not registered (e.g. 自动流水线 when its
+# import fails) are hidden after register_pages() runs.
+NAV_SECTIONS = [
+    ('创作工具', [('分镜', '分镜'), ('视觉审核', '视觉审核')]),
+    ('生产工具', [('工作流', '工作流'), ('本地工厂', '本地工厂'), ('生产工作台', '生产工作台'), ('一键成片', '一键成片')]),
+    ('资产工具', [('人物场景', '人物场景'), ('Prompt', 'Prompt'), ('Skill', 'Skill')]),
+    ('模型工具', [('模型诊断', '模型诊断'), ('模型路由', '模型路由')]),
+    ('项目与自动化', [('项目', '项目'), ('AI中心', 'AI中心'), ('批量生产', '批量生产'), ('自动流水线', '自动流水线')]),
+    ('发布与后期', [('发布', '发布'), ('后期', '后期')]),
+]
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -49,6 +62,10 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget(); self.stack.setObjectName('ContentStack'); bl.addWidget(self.stack,1)
         outer.addWidget(body,1)
         self.register_pages()
+        # Hide grouped buttons for pages that were not registered.
+        for page_key, button in self.sub_buttons:
+            if page_key not in self.pages:
+                button.hide()
         dashboard = self.pages.get('驾驶舱')
         if dashboard:
             dashboard.create_requested.connect(self.open_creation_with_idea)
@@ -84,17 +101,26 @@ class MainWindow(QMainWindow):
         return bar
 
     def build_dock(self):
-        dock=QFrame(); dock.setObjectName('Dock'); dock.setFixedWidth(148)
-        l=QVBoxLayout(dock); l.setContentsMargins(8,12,8,12); l.setSpacing(4)
+        dock=QFrame(); dock.setObjectName('Dock'); dock.setFixedWidth(176)
+        dock_layout=QVBoxLayout(dock); dock_layout.setContentsMargins(0,0,0,0); dock_layout.setSpacing(0)
+        scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        inner=QWidget(); l=QVBoxLayout(inner); l.setContentsMargins(8,12,8,12); l.setSpacing(4)
         self.dock_buttons=[]
+        self.sub_buttons=[]
         items=[('⌂','首页','驾驶舱'),('✦','创作','创作'),('▶','生产','生产'),('◇','资产','资产'),('◈','AI核心','模型')]
         for icon,label,key in items:
             b=QToolButton(); b.setObjectName('NavButton'); b.setCheckable(True); b.setText(icon+'\n'+label); b.setToolTip(label); b.setMinimumHeight(52); b.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Fixed); b.clicked.connect(lambda _=False,k=key:self.select(k)); l.addWidget(b); self.dock_buttons.append((key,b))
+        for section, entries in NAV_SECTIONS:
+            lab=QLabel(section); lab.setObjectName('NavSection'); l.addWidget(lab)
+            for label, key in entries:
+                b=QToolButton(); b.setObjectName('NavSubButton'); b.setCheckable(True); b.setText(label); b.setToolTip(label); b.setMinimumHeight(30); b.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Fixed); b.clicked.connect(lambda _=False,k=key:self.select(k)); l.addWidget(b); self.sub_buttons.append((key,b))
         tools=QToolButton(); tools.setObjectName('NavButton'); tools.setText('☷\n更多'); tools.setToolTip('更多功能'); tools.setMinimumHeight(52); tools.clicked.connect(self.show_more_menu); l.addWidget(tools); self.dock_buttons.append(('工具',tools))
         sets=QToolButton(); sets.setObjectName('NavButton'); sets.setText('⚙\n系统'); sets.setToolTip('系统中心'); sets.setMinimumHeight(52); sets.clicked.connect(lambda:self.select('系统')); l.addWidget(sets); self.dock_buttons.append(('设置',sets))
         l.addItem(QSpacerItem(1,1,QSizePolicy.Minimum,QSizePolicy.Expanding))
         fb=QLabel('SciCloud AGI V40'); fb.setObjectName('DockFooterBrand'); fb.setAlignment(Qt.AlignCenter); l.addWidget(fb)
         fs=QLabel('AI让每个人都能成为导演'); fs.setObjectName('DockFooterSub'); fs.setAlignment(Qt.AlignCenter); l.addWidget(fs)
+        scroll.setWidget(inner)
+        dock_layout.addWidget(scroll)
         return dock
 
     def register_pages(self):
@@ -138,6 +164,8 @@ class MainWindow(QMainWindow):
         if page: self.stack.setCurrentWidget(page)
         groups={'生产':{'工作流','本地工厂','生产工作台','一键成片'},'创作':{'分镜','视觉审核'},'资产':{'人物场景','Prompt','Skill'},'模型':{'模型诊断','模型路由'},'后期':{'发布'}}
         for group,b in self.dock_buttons: b.setChecked(group==key or key in groups.get(group,set()))
+        for page_key, b in getattr(self, 'sub_buttons', []):
+            b.setChecked(page_key == target)
     def show_more_menu(self):
         menu=QMenu(self)
         sections={'创作工具':['分镜','视觉审核'],'生产工具':['工作流','本地工厂','生产工作台','一键成片'],'资产工具':['人物场景','Prompt','Skill'],'模型工具':['模型诊断','模型路由'],'项目与自动化':['项目','AI中心','批量生产','自动流水线'],'发布':['发布']}
