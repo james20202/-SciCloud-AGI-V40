@@ -460,7 +460,16 @@ class ExecutionEngine:
         out['outputs']=valid_outputs
         out['model_id']=model.get('model_id'); out['adapter']=model.get('adapter')
         wf_saved=workflow_engine.load(wid)
-        next(t for t in wf_saved['tasks'] if t['id']==task_id)['outputs']=valid_outputs
+        saved_task=next(t for t in wf_saved['tasks'] if t['id']==task_id)
+        saved_task['outputs']=valid_outputs
+        # Persist adapter result metadata (including shot-batch checkpoint/progress)
+        # beside the workflow task so the UI can report the last production attempt.
+        saved_task['result']=out
+        if isinstance(result.data,dict):
+            if result.data.get('shot_batch_manifest_path'):
+                saved_task['shot_batch_manifest_path']=result.data['shot_batch_manifest_path']
+            if isinstance(result.data.get('progress'),dict):
+                saved_task['shot_batch_progress']=result.data['progress']
         workflow_engine.save(wf_saved)
         registered=asset_manager.register_execution(task,valid_outputs,project_id=wf.get('plan_id'),data=result.data) if valid_outputs else []
         out['assets']=registered
