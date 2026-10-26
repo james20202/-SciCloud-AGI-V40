@@ -136,7 +136,11 @@ def test_local_ollama_later_batch_failure_does_not_partially_mutate_plan(monkeyp
 
     assert result["mode"] == "deterministic_fallback"
     assert calls == 2
-    assert plan == before
+    assert plan["story"]["logline"] == before["story"]["logline"]
+    assert all("不应写入" not in shot.get("visual_prompt", "") for shot in plan["shots"])
+    assert all(shot.get("director_note") for shot in plan["shots"])
+    assert all("原始动作" not in shot.get("action", "") for shot in plan["shots"])
+    assert result["shot_count"] == 25
 
 
 def test_missing_ollama_replaces_generic_plan_prompts_with_shot_specific_visuals(monkeypatch):
