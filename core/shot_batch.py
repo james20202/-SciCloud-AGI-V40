@@ -119,6 +119,10 @@ def load_or_reconcile_shot_batch_manifest(
         return fresh_manifest
     if not isinstance(previous, dict) or not isinstance(previous.get("jobs"), list):
         return fresh_manifest
+    # A checkpoint is reusable only for the exact render configuration. This includes
+    # workflow/model parameters, assets, bindings, and reference inputs hashed upstream.
+    if previous.get("execution_signature") != fresh_manifest.get("execution_signature"):
+        return fresh_manifest
 
     old_by_id = {}
     for job in previous["jobs"]:
