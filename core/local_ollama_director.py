@@ -76,7 +76,7 @@ class LocalOllamaDirector:
             character_desc='；'.join('，'.join(str(item.get(key)) for key in ('name','description','costume') if item.get(key)) for item in selected)
             action=str(shot.get('action') or '').strip()
             generic_actions={'推动剧情并强化镜头信息','剧情动作','原始动作'}
-            if not action or action in generic_actions:
+            if not action or action in generic_actions or action.startswith('原始动作'):
                 action=f'{character_text}执行“{beat}”的具体动作，动作目标与结果清晰可见'
                 shot['action']=action
             existing=str(shot.get('visual_prompt') or shot.get('prompt') or '').strip()
