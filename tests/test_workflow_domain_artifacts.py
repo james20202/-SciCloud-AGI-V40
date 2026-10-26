@@ -121,7 +121,7 @@ def test_prompt_task_generates_one_prompt_per_storyboard_shot(monkeypatch, tmp_p
 
     result = engine.execute("WF-TEST", "TASK-05")
 
-    assert result["success"] is True
+    assert result["success"] is False
     assert result["data"]["prompt_count"] == 2
     payload = json.loads(open(result["outputs"][0], encoding="utf-8").read())
     assert [x["prompt"] for x in payload["prompts"]] == ["镜头 1 的提示词", "镜头 2 的提示词"]
@@ -137,7 +137,8 @@ def test_prompt_task_generates_one_prompt_per_storyboard_shot(monkeypatch, tmp_p
     assert payload["timing_summary"]["within_target_tolerance"] is False
     assert result["data"]["timing_summary"]["shot_count"] == 2
     assert "与目标 60s 相差 -50s" in result["message"]
-    assert workflow["tasks"][0]["status"] == "done"
+    assert workflow["tasks"][0]["status"] == "failed"
+    assert "已阻断后续镜头生产" in workflow["tasks"][0]["error"]
 
 
 def test_storyboard_task_failure_marks_task_failed(monkeypatch, tmp_path):
