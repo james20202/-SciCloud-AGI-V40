@@ -1,4 +1,4 @@
-import json, os
+import json, os, tempfile
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.episode_engine import episode_engine
@@ -23,10 +23,27 @@ class EpisodePipeline:
         self.root=os.path.join(project_dir,'episode_pipelines')
         os.makedirs(self.root,exist_ok=True)
     def _now(self): return datetime.now().isoformat(timespec='seconds')
-    def _path(self,eid): return os.path.join(self.root,eid+'.json')
+    def _path(self,eid):
+        if not isinstance(eid, str) or not eid.strip() or eid in {'.', '..'}:
+            raise ValueError('episode_id 无效')
+        if '/' in eid or chr(92) in eid or chr(0) in eid:
+            raise ValueError('episode_id 不允许包含路径分隔符或空字符')
+        return os.path.join(self.root,eid+'.json')
     def _save(self,d):
+        if not isinstance(d, dict) or not isinstance(d.get('episode_id'), str) or not d['episode_id'].strip():
+            raise ValueError('episode_id 无效，无法保存生产流水线')
+        path=self._path(d['episode_id'])
         d['updated_at']=self._now()
-        with open(self._path(d['episode_id']),'w',encoding='utf-8') as f: json.dump(d,f,ensure_ascii=False,indent=2)
+        fd,tmp_path=tempfile.mkstemp(prefix='.episode-pipeline-',suffix='.tmp',dir=os.path.dirname(path))
+        try:
+            with os.fdopen(fd,'w',encoding='utf-8') as f:
+                json.dump(d,f,ensure_ascii=False,indent=2,allow_nan=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path,path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
         return d
     def load(self,eid):
         with open(self._path(eid),encoding='utf-8') as f: return json.load(f)
