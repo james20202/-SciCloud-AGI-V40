@@ -56,3 +56,23 @@ class MediaQualityEngineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_media_qc_rejects_video_duration_drift_over_half_percent(self):
+    payload = json.dumps({
+        "format": {"duration": "56.0", "size": "5", "format_name": "mov,mp4"},
+        "streams": [
+            {"codec_type": "video", "codec_name": "h264", "width": 1080, "height": 1920},
+            {"codec_type": "audio", "codec_name": "aac"},
+        ],
+    })
+
+    def runner(command, **kwargs):
+        if command[0] == "ffprobe":
+            return SimpleNamespace(returncode=0, stdout=payload, stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    engine = MediaQualityEngine(runner=runner, which=lambda name: "/usr/bin/" + name)
+    report = engine.inspect(self.path, expected_duration=60)
+    self.assertFalse(report["passed"])
+    self.assertIn("duration_mismatch", report["errors"])
