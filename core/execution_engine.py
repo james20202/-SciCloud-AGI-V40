@@ -385,7 +385,9 @@ class ExecutionEngine:
                 preflight=getattr(adapter,'preflight_shot_batch',None)
                 if not callable(preflight):
                     raise RuntimeError('当前 ComfyUI 适配器不支持逐镜头工作流预检查，拒绝启动批次')
-                preflight_result=preflight(task,bindings,context)
+                preflight_context=dict(context)
+                preflight_context['shot_batch_jobs']=batch.get('jobs') or []
+                preflight_result=preflight(task,bindings,preflight_context)
                 if not isinstance(preflight_result,dict) or preflight_result.get('success') is not True:
                     detail=preflight_result.get('message','未知预检查错误') if isinstance(preflight_result,dict) else '适配器返回无效预检查结果'
                     raise RuntimeError(detail)
