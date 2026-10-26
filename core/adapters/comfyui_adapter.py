@@ -40,12 +40,34 @@ class ComfyUIAdapter(BaseAdapter):
     def _workflow(self, task, context):
         manifest = task.get('workflow_manifest') or context.get('workflow_manifest')
         registry_id = task.get('workflow_registry_id') or context.get('workflow_registry_id')
+        registry = WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR)
         if manifest is None and registry_id:
             try:
-                registry = WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR)
                 manifest = registry.get(registry_id)
             except WorkflowManifestError as exc:
                 return None, f'未能加载已登记的 ComfyUI 工作流：{exc}'
+        # Allow production tasks to select a registered workflow by capability,
+        # so users do not have to embed a large API graph in every task JSON.
+        # Ambiguous matches are rejected instead of silently choosing the wrong model.
+        if manifest is None and not registry_id and not (task.get('workflow') or context.get('workflow')):
+            requested_capability = task.get('workflow_capability') or context.get('workflow_capability')
+            if not requested_capability:
+                requested_capability = {
+                    'image': 'image.text2image',
+                    'video': 'video.image2video',
+                }.get(task.get('type'))
+            if requested_capability:
+                matches = [
+                    item for item in registry.list()
+                    if item.get('capability') == requested_capability
+                ]
+                if len(matches) == 1:
+                    manifest = matches[0]
+                elif len(matches) > 1:
+                    return None, (
+                        f'工作流能力 {requested_capability} 对应 {len(matches)} 个已登记工作流；'
+                        '请在任务中指定 workflow_registry_id。'
+                    )
         if manifest is not None:
             try:
                 return compile_workflow(
