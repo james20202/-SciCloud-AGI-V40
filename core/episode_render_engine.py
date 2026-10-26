@@ -117,7 +117,7 @@ def build_episode_edit_command(
         label = f"v{index}"
         filters.append(
             f"[{index}:v:0]scale=1080:1920:force_original_aspect_ratio=decrease,"
-            f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p[{label}]"
+            f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,setpts=PTS-STARTPTS,format=yuv420p[{label}]"
         )
         video_labels.append(f"[{label}]")
     filters.append(f"{''.join(video_labels)}concat=n={len(video_paths)}:v=1:a=0[vout]")
