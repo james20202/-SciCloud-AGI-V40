@@ -27,6 +27,25 @@ class MediaQualityEngine:
     def inspect(self, path, expected_duration=None, black_warning_seconds=1.5, silence_warning_seconds=5.0):
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
             return {"success": False, "passed": False, "message": "成片文件不存在或为空", "warnings": [], "errors": ["missing_file"]}
+        try:
+            black_warning_seconds = float(black_warning_seconds)
+        except (TypeError, ValueError, OverflowError):
+            black_warning_seconds = float("nan")
+        try:
+            silence_warning_seconds = float(silence_warning_seconds)
+        except (TypeError, ValueError, OverflowError):
+            silence_warning_seconds = float("nan")
+        invalid_thresholds = []
+        if not math.isfinite(black_warning_seconds) or black_warning_seconds <= 0:
+            invalid_thresholds.append("invalid_black_warning_threshold")
+        if not math.isfinite(silence_warning_seconds) or silence_warning_seconds <= 0:
+            invalid_thresholds.append("invalid_silence_warning_threshold")
+        if invalid_thresholds:
+            return {
+                "success": False, "passed": False,
+                "message": "黑帧/静音检测阈值必须是有限的正数",
+                "warnings": [], "errors": invalid_thresholds,
+            }
         probe = self._run([
             "ffprobe", "-v", "error", "-show_entries",
             "format=duration,size,format_name:stream=codec_type,codec_name,width,height,sample_rate,channels",
