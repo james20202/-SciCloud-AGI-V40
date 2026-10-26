@@ -80,8 +80,12 @@ class DirectorPlanPage(QWidget):
             QMessageBox.warning(self,'导演计划校验失败',str(exc)); return
         self.plan=plan
         generation=plan.get('generation',{})
-        if generation.get('mode')=='local_ollama':
-            mode='本地 Ollama'
+        if generation.get('mode')=='cloud_llm':
+            mode='云端 LLM'
+        elif generation.get('mode')=='local_ollama':
+            # Cloud was tried first and failed, Ollama covered it: say so
+            # instead of hiding the cloud failure behind a clean Ollama label.
+            mode='本地 Ollama' + (f"（云端 {generation.get('cloud_error')} 已回落）" if generation.get('cloud_attempted') and generation.get('cloud_error') else '')
         else:
             # Show WHY the rule fallback was used, not just that it was:
             # ollama_not_running / model_not_loaded / invalid_json /
@@ -89,7 +93,10 @@ class DirectorPlanPage(QWidget):
             diagnosis=generation.get('diagnosis') or ''
             mode='本地规则兜底' + (f'（{diagnosis}）' if diagnosis else '')
         self.summary.setText(f"{plan.get('title','未命名项目')}  ·  {plan['intent'].get('genre','原创短剧')}  ·  {len(plan['shots'])} 个镜头  ·  {len(plan['tasks'])} 个生产任务  ·  {sum(float(s.get('duration',0)) for s in plan['shots']):g} 秒  ·  {mode}")
-        self.summary.setToolTip(generation.get('message','导演计划已生成'))
+        tooltip=generation.get('message','导演计划已生成')
+        if generation.get('cloud_attempted') and generation.get('cloud_error'):
+            tooltip+=f"\n云端失败原因：{generation.get('cloud_error')}（{generation.get('cloud_error_detail','')}），已回落。"
+        self.summary.setToolTip(tooltip)
         self.tasks.clear()
         for task in plan['tasks']: self.tasks.addItem(f"{task.get('id','TASK')}   {task.get('name',task.get('type','生产任务'))}   ·   等待执行")
         self.queue_btn.setEnabled(True)
