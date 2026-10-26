@@ -125,3 +125,33 @@ def test_video_probe_rejects_duration_mismatch_against_episode_target(tmp_path):
     assert result["passed"] is False
     assert "duration_mismatch" in result["errors"]
     assert result["expected_duration_seconds"] == 60
+
+def test_edit_qc_rejects_silent_final_video_when_audio_sources_exist(tmp_path, monkeypatch):
+    import core.qc_engine as module
+    video = tmp_path / "episode.mp4"
+    voice = tmp_path / "voice.wav"
+    video.write_bytes(b"video fixture")
+    voice.write_bytes(b"audio fixture")
+
+    class FakeMedia:
+        def inspect(self, path, expected_duration=None):
+            return {
+                "passed": True, "success": True, "message": "video ok",
+                "has_video_stream": True, "has_audio_stream": False,
+            }
+        def inspect_audio(self, path, expected_duration=None):
+            return {"passed": True, "success": True, "has_audio_stream": True}
+
+    monkeypatch.setattr(module, "media_quality_engine", FakeMedia())
+    workflow = {
+        "tasks": [
+            {"id": "VOICE", "type": "voice", "status": "done", "outputs": [str(voice)]},
+            {"id": "EDIT", "type": "edit", "status": "done", "outputs": [str(video)]},
+        ]
+    }
+    result = QCEngine().inspect_task(workflow, workflow["tasks"][1])
+
+    assert result["success"] is False
+    assert result["checks"][0]["success"] is False
+    assert "缺少音轨" in result["checks"][0]["message"]
+
