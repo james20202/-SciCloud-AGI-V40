@@ -59,6 +59,25 @@ class QCEngine:
                     checks[-1]['success']=False
                     checks[-1]['message']='媒体技术质检未通过：'+str(media_result.get('message') or ', '.join(media_result.get('errors') or []))
                     ok=False
+                elif task.get('type') == 'edit' and media_result.get('has_audio_stream') is False:
+                    audio_source_exists = any(
+                        isinstance(source_task, dict)
+                        and source_task.get('type') in {'voice', 'sound'}
+                        and source_task.get('status') == STATUS_DONE
+                        and any(
+                            isinstance(source_path, str)
+                            and os.path.isfile(source_path)
+                            and os.path.getsize(source_path) > 0
+                            and os.path.splitext(source_path)[1].lower() in {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg', '.opus'}
+                            for source_item in (source_task.get('outputs') or [])
+                            for source_path in [source_item.get('path') if isinstance(source_item, dict) else source_item]
+                        )
+                        for source_task in (wf.get('tasks') or [])
+                    )
+                    if audio_source_exists:
+                        checks[-1]['success']=False
+                        checks[-1]['message']='最终成片缺少音轨，但工作流已有配音/音效源文件'
+                        ok=False
             elif good and ext in {'.mp3','.wav','.m4a','.aac','.flac','.ogg','.opus'}:
                 media_result=media_quality_engine.inspect_audio(path, expected_duration=expected_duration)
                 media_results.append(media_result)
