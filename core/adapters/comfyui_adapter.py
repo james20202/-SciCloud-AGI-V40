@@ -98,6 +98,8 @@ class ComfyUIAdapter(BaseAdapter):
         try:
             if manifest is None and registry_id:
                 manifest = registry.get(registry_id)
+            if manifest is not None and not isinstance(manifest, dict):
+                return {"success": False, "message": "workflow_manifest 必须是对象；逐镜头批次未启动。"}
             if manifest is None:
                 requested = task.get("workflow_capability") or context.get("workflow_capability") or "video.image2video"
                 matches = [item for item in registry.list() if item.get("capability") == requested]
