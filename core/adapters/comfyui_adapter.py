@@ -117,6 +117,8 @@ class ComfyUIAdapter(BaseAdapter):
             unknown_base = set(base_params) - declared
             if unknown_base:
                 return {"success": False, "message": "workflow_params 含未声明参数：" + ", ".join(sorted(unknown_base))}
+            if not ({"prompt", "visual_prompt"} & set(bindings)):
+                return {"success": False, "message": "逐镜头模式至少需要将 prompt 或 visual_prompt 映射到工作流参数，否则每个镜头会重复生成相同内容。"}
             for field, parameter in bindings.items():
                 if field not in {"prompt", "visual_prompt", "duration_seconds", "shot_id"}:
                     return {"success": False, "message": f"不支持的镜头字段映射：{field}"}
