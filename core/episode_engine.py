@@ -1,4 +1,4 @@
-import json, os, time
+import json, os, tempfile, time
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.director_plan import director_plan_engine
@@ -21,12 +21,28 @@ class EpisodeEngine:
         return datetime.now().isoformat(timespec='seconds')
 
     def _path(self, episode_id):
+        if not isinstance(episode_id, str) or not episode_id.strip() or episode_id in {'.', '..'}:
+            raise ValueError('episode_id 无效')
+        if '/' in episode_id or chr(92) in episode_id or chr(0) in episode_id:
+            raise ValueError('episode_id 不允许包含路径分隔符或空字符')
         return os.path.join(self.root, f'{episode_id}.json')
 
     def _save(self, episode):
+        if not isinstance(episode, dict) or not isinstance(episode.get('episode_id'), str):
+            raise ValueError('episode 必须包含有效 episode_id')
+        path = self._path(episode['episode_id'])
+        os.makedirs(self.root, exist_ok=True)
         episode['updated_at'] = self._now()
-        with open(self._path(episode['episode_id']), 'w', encoding='utf-8') as f:
-            json.dump(episode, f, ensure_ascii=False, indent=2)
+        fd, temporary = tempfile.mkstemp(prefix='.episode-', suffix='.tmp', dir=self.root)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(episode, f, ensure_ascii=False, indent=2, allow_nan=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.remove(temporary)
         return episode
 
     def load(self, episode_id):
