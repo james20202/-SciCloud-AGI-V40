@@ -51,3 +51,12 @@ def test_shot_batch_rejects_duplicate_shot_ids():
             {"id": "S1", "visual_prompt": "a", "prompt": "a"},
             {"id": "S1", "visual_prompt": "b", "prompt": "b"},
         ], workflow_id="WF")
+
+
+
+def test_shot_batch_rejects_ids_that_collide_after_path_sanitization():
+    with pytest.raises(ValueError, match="冲突"):
+        build_shot_batch_manifest([
+            {"id": "S/1", "visual_prompt": "first", "prompt": "first"},
+            {"id": "S_1", "visual_prompt": "second", "prompt": "second"},
+        ], workflow_id="WF")
