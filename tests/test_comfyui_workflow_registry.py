@@ -96,3 +96,39 @@ def test_manifest_rejects_unsupported_capability():
     broken["capability"] = "video.magic_remote_runner"
     with pytest.raises(WorkflowManifestError, match="不支持的工作流 capability"):
         validate_manifest(broken)
+
+def test_comfyui_adapter_resolves_registry_id_and_binds_task_params(tmp_path, monkeypatch):
+    import core.adapters.comfyui_adapter as adapter_module
+    from core.adapters.comfyui_adapter import ComfyUIAdapter
+
+    builtin_dir = tmp_path / "builtin"
+    user_dir = tmp_path / "user"
+    builtin_dir.mkdir()
+    user_dir.mkdir()
+    source = manifest()
+    (user_dir / "local-video.json").write_text(json.dumps(source), encoding="utf-8")
+    monkeypatch.setattr(adapter_module, "BUILTIN_WORKFLOW_DIR", str(builtin_dir))
+    monkeypatch.setattr(adapter_module, "USER_WORKFLOW_DIR", str(user_dir))
+
+    graph, error = ComfyUIAdapter()._workflow({
+        "workflow_registry_id": "local-video",
+        "workflow_params": {"steps": 28, "guidance": 5.5},
+        "workflow_assets": {"checkpoint": "local-model.safetensors"},
+    }, {})
+
+    assert error is None
+    assert graph["1"]["inputs"]["ckpt_name"] == "local-model.safetensors"
+    assert graph["2"]["inputs"] == {"steps": 28, "cfg": 5.5}
+
+
+def test_comfyui_adapter_reports_missing_registry_workflow(tmp_path, monkeypatch):
+    import core.adapters.comfyui_adapter as adapter_module
+    from core.adapters.comfyui_adapter import ComfyUIAdapter
+
+    monkeypatch.setattr(adapter_module, "BUILTIN_WORKFLOW_DIR", str(tmp_path / "builtin"))
+    monkeypatch.setattr(adapter_module, "USER_WORKFLOW_DIR", str(tmp_path / "user"))
+    graph, error = ComfyUIAdapter()._workflow({"workflow_registry_id": "missing-flow"}, {})
+
+    assert graph is None
+    assert "未能加载已登记的 ComfyUI 工作流" in error
+
