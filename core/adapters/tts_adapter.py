@@ -24,6 +24,13 @@ class TTSCommandAdapter(BaseAdapter):
             if not shutil.which(args[0]):
                 return AdapterResult(False, f'找不到 TTS 可执行文件：{args[0]}')
 
+            text_input = task.get('text') or task.get('input_text') or task.get('script')
+            has_text_placeholder = any('{text}' in arg for arg in args)
+            if has_text_placeholder and (not isinstance(text_input, str) or not text_input.strip()):
+                return AdapterResult(False, 'TTS 命令使用了 {text}，但任务没有可朗读文本。')
+            if isinstance(text_input, str) and text_input.strip() and not has_text_placeholder:
+                return AdapterResult(False, 'TTS 任务已有朗读文本，但命令未包含 {text}；拒绝生成空内容配音。')
+
             output_path = task.get('output_path') or task.get('output_file')
             if not isinstance(output_path, str) or not output_path.strip():
                 return AdapterResult(
@@ -33,7 +40,7 @@ class TTSCommandAdapter(BaseAdapter):
             output_path = os.path.abspath(os.path.expanduser(output_path))
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             has_output_placeholder = any('{output}' in arg for arg in args)
-            args = [arg.replace('{output}', output_path) for arg in args]
+            args = [arg.replace('{output}', output_path).replace('{text}', text_input or '') for arg in args]
             if not has_output_placeholder and output_path not in args:
                 # For simple CLI TTS tools that accept the destination as their last argument.
                 args.append(output_path)
