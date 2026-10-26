@@ -1,6 +1,6 @@
 import json
 
-from core.shot_batch import run_shot_batch
+from core.shot_batch import load_or_reconcile_shot_batch_manifest, run_shot_batch
 
 
 def _touch(path):
@@ -53,3 +53,80 @@ def test_batch_requeues_done_job_if_output_disappears(tmp_path):
     assert result["status"] == "done"
     assert result["jobs"][0]["attempt"] == 2
     assert result["jobs"][0]["outputs"] == [output]
+
+
+
+def test_reconcile_reuses_completed_jobs_only_when_shot_inputs_match(tmp_path):
+    state = tmp_path / "batch.json"
+    output = _touch(tmp_path / "completed.mp4")
+    previous = {
+        "status": "failed",
+        "jobs": [
+            {"job_id": "WF__S1", "shot_id": "S1", "shot_index": 1,
+             "duration_seconds": 5, "prompt": "p1", "visual_prompt": "v1",
+             "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+             "output_path": "output/shots/WF/S1.mp4", "status": "done",
+             "attempt": 1, "outputs": [output]},
+            {"job_id": "WF__S2", "shot_id": "S2", "shot_index": 2,
+             "duration_seconds": 5, "prompt": "p2", "visual_prompt": "v2",
+             "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+             "output_path": "output/shots/WF/S2.mp4", "status": "failed",
+             "attempt": 1, "outputs": [], "error": "temporary error"},
+        ],
+    }
+    state.write_text(json.dumps(previous), encoding="utf-8")
+    fresh = {
+        "workflow_id": "WF", "status": "planned",
+        "jobs": [
+            {"job_id": "WF__S1", "shot_id": "S1", "shot_index": 1,
+             "duration_seconds": 5, "prompt": "p1", "visual_prompt": "v1",
+             "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+             "output_path": "output/shots/WF/S1.mp4", "status": "planned",
+             "attempt": 0, "outputs": []},
+            {"job_id": "WF__S2", "shot_id": "S2", "shot_index": 2,
+             "duration_seconds": 5, "prompt": "p2", "visual_prompt": "v2",
+             "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+             "output_path": "output/shots/WF/S2.mp4", "status": "planned",
+             "attempt": 0, "outputs": []},
+        ],
+    }
+    reconciled = load_or_reconcile_shot_batch_manifest(fresh, str(state))
+    assert reconciled["resumed_from_checkpoint"] is True
+    assert reconciled["jobs"][0]["status"] == "done"
+    assert reconciled["jobs"][0]["outputs"] == [output]
+    assert reconciled["jobs"][1]["status"] == "failed"
+    assert reconciled["jobs"][1]["attempt"] == 1
+
+    calls = []
+    retry_output = _touch(tmp_path / "retry.mp4")
+    result = run_shot_batch(
+        reconciled,
+        lambda job: calls.append(job["job_id"]) or [retry_output],
+        str(state),
+        retry_failed=True,
+    )
+    assert calls == ["WF__S2"]
+    assert result["status"] == "done"
+    assert result["progress"]["done"] == 2
+
+
+def test_reconcile_discards_checkpoint_if_prompt_changed(tmp_path):
+    state = tmp_path / "batch.json"
+    state.write_text(json.dumps({"jobs": [{
+        "job_id": "WF__S1", "shot_id": "S1", "shot_index": 1,
+        "duration_seconds": 5, "prompt": "old", "visual_prompt": "v",
+        "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+        "output_path": "output/shots/WF/S1.mp4", "status": "done",
+        "attempt": 1, "outputs": [],
+    }]}), encoding="utf-8")
+    fresh = {"jobs": [{
+        "job_id": "WF__S1", "shot_id": "S1", "shot_index": 1,
+        "duration_seconds": 5, "prompt": "new", "visual_prompt": "v",
+        "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+        "output_path": "output/shots/WF/S1.mp4", "status": "planned",
+        "attempt": 0, "outputs": [],
+    }]}
+    reconciled = load_or_reconcile_shot_batch_manifest(fresh, str(state))
+    assert "resumed_from_checkpoint" not in reconciled
+    assert reconciled["jobs"][0]["status"] == "planned"
+    assert reconciled["jobs"][0]["prompt"] == "new"
