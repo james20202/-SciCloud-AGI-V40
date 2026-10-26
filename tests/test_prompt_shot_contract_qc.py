@@ -97,6 +97,24 @@ def test_prompt_qc_accepts_timeline_within_target_tolerance(tmp_path):
     artifact = _write(tmp_path / "prompts_on_target.json", {
         "prompts": [
             {"shot_id": "S1", "duration": 30, "visual_prompt": "山门"},
+            {"shot_id": "S2", "duration": 29.8, "visual_prompt": "剑光"},
+        ],
+        "timing_summary": {
+            "target_duration_seconds": 60,
+            "actual_duration_seconds": 59.8,
+            "within_target_tolerance": True,
+        },
+    })
+    result = QCEngine().inspect_task({}, {
+        "id": "PROMPT-ON-TARGET", "type": "prompt", "outputs": [artifact]
+    })
+    assert result["success"] is True
+
+
+def test_prompt_qc_rejects_duration_drift_that_legacy_two_percent_tolerance_allowed(tmp_path):
+    artifact = _write(tmp_path / "prompts_slightly_short.json", {
+        "prompts": [
+            {"shot_id": "S1", "duration": 30, "visual_prompt": "山门"},
             {"shot_id": "S2", "duration": 29.5, "visual_prompt": "剑光"},
         ],
         "timing_summary": {
@@ -106,6 +124,8 @@ def test_prompt_qc_accepts_timeline_within_target_tolerance(tmp_path):
         },
     })
     result = QCEngine().inspect_task({}, {
-        "id": "PROMPT-ON-TARGET", "type": "prompt", "outputs": [artifact]
+        "id": "PROMPT-SLIGHT-DRIFT", "type": "prompt", "outputs": [artifact]
     })
-    assert result["success"] is True
+    assert result["success"] is False
+    assert result["shot_contract_checks"][0]["success"] is False
+    assert "允许误差 ±0.3s" in result["shot_contract_checks"][0]["message"]
