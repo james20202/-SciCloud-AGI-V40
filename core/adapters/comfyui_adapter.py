@@ -4,8 +4,12 @@ from urllib import request, parse
 from urllib.error import HTTPError, URLError
 from core.adapters.base import BaseAdapter, AdapterResult
 from core.character_reference_comfyui import bind_character_references
-from core.comfyui_workflow_registry import compile_workflow, WorkflowManifestError
+from core.comfyui_workflow_registry import compile_workflow, WorkflowManifestError, WorkflowRegistry
+from core.config import DATA_DIR
 from core.render_budget import budget_from_task, apply_budget_to_graph
+
+BUILTIN_WORKFLOW_DIR = os.path.join(DATA_DIR, 'comfyui_workflows', 'builtin')
+USER_WORKFLOW_DIR = os.path.join(DATA_DIR, 'comfyui_workflows', 'user')
 
 
 class ComfyUIAdapter(BaseAdapter):
@@ -35,6 +39,13 @@ class ComfyUIAdapter(BaseAdapter):
 
     def _workflow(self, task, context):
         manifest = task.get('workflow_manifest') or context.get('workflow_manifest')
+        registry_id = task.get('workflow_registry_id') or context.get('workflow_registry_id')
+        if manifest is None and registry_id:
+            try:
+                registry = WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR)
+                manifest = registry.get(registry_id)
+            except WorkflowManifestError as exc:
+                return None, f'未能加载已登记的 ComfyUI 工作流：{exc}'
         if manifest is not None:
             try:
                 return compile_workflow(
