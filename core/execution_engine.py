@@ -156,6 +156,7 @@ class ExecutionEngine:
             if blocked:
                 return blocked
             try:
+                timing_contract_passed=True
                 plans=director_plan_engine.load_plans()
                 plan=next((p for p in plans if p.get('plan_id')==wf.get('plan_id')),None)
                 if task.get('type') in {'story','character','scene'} and plan is None:
@@ -223,6 +224,7 @@ class ExecutionEngine:
                         'shot_count':len(records),
                         'shot_durations_seconds':[round(float(item.get('duration',0) or 0),3) for item in records],
                     }
+                    timing_contract_passed=(target_duration is None or timing_summary['within_target_tolerance'] is True)
                     audio_timeline=build_audio_timeline(records)
                     subtitle_srt_draft=render_srt(audio_timeline)
                     video_task=next((item for item in wf.get('tasks',[]) if item.get('type')=='video'),{})
@@ -260,8 +262,13 @@ class ExecutionEngine:
                 saved_task['outputs']=[path]
                 saved_task['result']=payload
                 workflow_engine.save(wf_saved)
-                workflow_engine.complete_task(wid,task_id)
-                result={'success':True,'message':message,'outputs':[path],'assets':registered,'data':payload}
+                if task.get('type') == 'prompt' and not timing_contract_passed:
+                    blocked_message=message+'；已阻断后续镜头生产，请修正镜头时长后重试。'
+                    workflow_engine.fail_task(wid,task_id,blocked_message)
+                    result={'success':False,'message':blocked_message,'outputs':[path],'assets':registered,'data':payload}
+                else:
+                    workflow_engine.complete_task(wid,task_id)
+                    result={'success':True,'message':message,'outputs':[path],'assets':registered,'data':payload}
             except Exception as exc:
                 workflow_engine.fail_task(wid,task_id,str(exc))
                 result={'success':False,'message':str(exc),'task_id':task_id,'workflow_id':wid}
