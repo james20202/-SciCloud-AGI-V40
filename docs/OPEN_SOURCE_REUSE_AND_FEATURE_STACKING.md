@@ -109,3 +109,7 @@ ComfyUI media tasks can now set `workflow_capability` instead of embedding an AP
 ## TTS artifact verification
 
 The command-based TTS adapter now requires an explicit `output_path` or `output_file`, accepts argument arrays or shell-like quoted command strings without invoking a shell, supports an `{output}` placeholder, and only reports success when the target file exists and is non-empty. Non-zero exits, missing executables, timeouts, and empty/missing audio files fail the task. This closes the previous gap where a command could exit successfully without registering any usable audio artifact. Four regression tests cover the output contract and failure cases. The adapter remains provider-neutral; a compatible local TTS command must still be configured by the user.
+
+### Storyboard-to-TTS handoff
+
+For `voice` tasks using the command adapter, the execution engine now reads the linked storyboard and assembles a narration script from each shot's dialogue (preferred) or voiceover, unless the task supplies its own text. It provides a default local WAV destination under the project output directory. TTS command templates must use `{text}` and `{output}` placeholders to explicitly bind narration and destination; the adapter verifies the resulting non-empty file before marking the task complete. This produces a usable first-pass narration track, not word-level timing: final audio alignment and per-character voice casting remain later production steps.
