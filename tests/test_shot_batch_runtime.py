@@ -158,3 +158,31 @@ def test_reconcile_discards_checkpoint_when_render_signature_changes(tmp_path):
     result = load_or_reconcile_shot_batch_manifest(fresh, str(state))
     assert result["jobs"][0]["status"] == "planned"
     assert "resumed_from_checkpoint" not in result
+
+
+def test_checkpoint_is_invalidated_when_render_configuration_changes(tmp_path):
+    from core.shot_batch import load_or_reconcile_shot_batch_manifest
+    state = tmp_path / "batch.json"
+    state.write_text(json.dumps({
+        "execution_signature": "old-config",
+        "jobs": [{
+            "job_id": "WF__S1", "shot_id": "S1", "shot_index": 1,
+            "duration_seconds": 5, "prompt": "p", "visual_prompt": "v",
+            "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+            "output_path": "output/shots/WF/S1.mp4", "status": "done",
+            "attempt": 1, "outputs": [],
+        }],
+    }), encoding="utf-8")
+    fresh = {
+        "execution_signature": "new-config",
+        "jobs": [{
+            "job_id": "WF__S1", "shot_id": "S1", "shot_index": 1,
+            "duration_seconds": 5, "prompt": "p", "visual_prompt": "v",
+            "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+            "output_path": "output/shots/WF/S1.mp4", "status": "planned",
+            "attempt": 0, "outputs": [],
+        }],
+    }
+    reconciled = load_or_reconcile_shot_batch_manifest(fresh, str(state))
+    assert "resumed_from_checkpoint" not in reconciled
+    assert reconciled["jobs"][0]["status"] == "planned"
