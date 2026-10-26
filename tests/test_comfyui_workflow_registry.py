@@ -132,3 +132,52 @@ def test_comfyui_adapter_reports_missing_registry_workflow(tmp_path, monkeypatch
     assert graph is None
     assert "未能加载已登记的 ComfyUI 工作流" in error
 
+def test_comfyui_adapter_auto_selects_unique_capability_workflow(tmp_path, monkeypatch):
+    import core.adapters.comfyui_adapter as adapter_module
+    from core.adapters.comfyui_adapter import ComfyUIAdapter
+
+    builtin_dir = tmp_path / "builtin"
+    user_dir = tmp_path / "user"
+    builtin_dir.mkdir()
+    user_dir.mkdir()
+    (builtin_dir / "local-video.json").write_text(json.dumps(manifest()), encoding="utf-8")
+    monkeypatch.setattr(adapter_module, "BUILTIN_WORKFLOW_DIR", str(builtin_dir))
+    monkeypatch.setattr(adapter_module, "USER_WORKFLOW_DIR", str(user_dir))
+
+    graph, error = ComfyUIAdapter()._workflow({
+        "type": "video",
+        "workflow_capability": "video.reference2video",
+        "workflow_params": {"steps": 24},
+        "workflow_assets": {"checkpoint": "local-model.safetensors"},
+    }, {})
+
+    assert error is None
+    assert graph["1"]["inputs"]["ckpt_name"] == "local-model.safetensors"
+    assert graph["2"]["inputs"]["steps"] == 24
+
+
+def test_comfyui_adapter_rejects_ambiguous_capability_workflows(tmp_path, monkeypatch):
+    import core.adapters.comfyui_adapter as adapter_module
+    from core.adapters.comfyui_adapter import ComfyUIAdapter
+
+    builtin_dir = tmp_path / "builtin"
+    user_dir = tmp_path / "user"
+    builtin_dir.mkdir()
+    user_dir.mkdir()
+    first = manifest()
+    second = manifest()
+    second["id"] = "second-video"
+    second["displayName"] = "Second video"
+    (builtin_dir / "first.json").write_text(json.dumps(first), encoding="utf-8")
+    (builtin_dir / "second.json").write_text(json.dumps(second), encoding="utf-8")
+    monkeypatch.setattr(adapter_module, "BUILTIN_WORKFLOW_DIR", str(builtin_dir))
+    monkeypatch.setattr(adapter_module, "USER_WORKFLOW_DIR", str(user_dir))
+
+    graph, error = ComfyUIAdapter()._workflow({
+        "type": "video",
+        "workflow_capability": "video.reference2video",
+    }, {})
+
+    assert graph is None
+    assert "请在任务中指定 workflow_registry_id" in error
+
