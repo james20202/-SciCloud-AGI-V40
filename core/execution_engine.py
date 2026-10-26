@@ -266,13 +266,41 @@ class ExecutionEngine:
             return blocked
         try:
             context={'workflow':task.get('workflow'),'command':task.get('command')}
+            adapter_task=task
+            safe_wid=re.sub(r'[^A-Za-z0-9_-]+','_',str(wid)).strip('_') or 'workflow'
+            safe_tid=re.sub(r'[^A-Za-z0-9_-]+','_',str(task_id)).strip('_') or 'task'
+            if task.get('type') == 'voice' and model.get('adapter') == 'tts_command':
+                # Build one narration script from the canonical storyboard while keeping
+                # the persisted workflow task backward-compatible.
+                adapter_task=dict(task)
+                text_input=adapter_task.get('text') or adapter_task.get('input_text') or adapter_task.get('script')
+                if not isinstance(text_input,str) or not text_input.strip():
+                    storyboard_id=task.get('storyboard_id') or wf.get('storyboard_id')
+                    storyboard=storyboard_director.load(storyboard_id) if storyboard_id else None
+                    if not storyboard or not isinstance(storyboard.get('shots'),list):
+                        raise RuntimeError('配音任务缺少可用分镜，无法提取对白/旁白')
+                    lines=[]
+                    for shot in storyboard['shots']:
+                        if not isinstance(shot,dict):
+                            continue
+                        dialogue=shot.get('dialogue')
+                        voiceover=shot.get('voiceover')
+                        line=dialogue.strip() if isinstance(dialogue,str) and dialogue.strip() else (voiceover.strip() if isinstance(voiceover,str) else '')
+                        if line:
+                            lines.append(line)
+                    text_input='\\n'.join(lines)
+                if not isinstance(text_input,str) or not text_input.strip():
+                    raise RuntimeError('分镜中没有可用于配音的对白或旁白；请先补充台词')
+                adapter_task['text']=text_input
+                adapter_task.setdefault(
+                    'output_path',
+                    os.path.join(PROJECT_DIR,'output','voice',safe_wid,f'{safe_tid}.wav')
+                )
             if model.get('adapter') == 'comfyui' and task.get('type') in {'image','video','voice','sound','edit'} and callable(getattr(adapter,'render',None)):
-                safe_wid=re.sub(r'[^A-Za-z0-9_-]+','_',str(wid)).strip('_') or 'workflow'
-                safe_tid=re.sub(r'[^A-Za-z0-9_-]+','_',str(task_id)).strip('_') or 'task'
                 context['output_dir']=task.get('output_dir') or os.path.join(PROJECT_DIR,'output','comfyui',safe_wid,safe_tid)
-                result=adapter.render(model,task,context)
+                result=adapter.render(model,adapter_task,context)
             else:
-                result=adapter.execute(model,task,context)
+                result=adapter.execute(model,adapter_task,context)
             if result is None or not hasattr(result, 'success') or not hasattr(result, 'outputs') or not callable(getattr(result, 'to_dict', None)):
                 raise RuntimeError('适配器返回了无效结果对象')
             if not isinstance(result.success, bool):
