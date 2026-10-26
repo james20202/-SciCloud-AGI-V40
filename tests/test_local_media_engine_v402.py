@@ -55,3 +55,58 @@ def test_export_requires_nonempty_input():
         result = engine.export_mp4(os.path.join(root, 'empty.mp4'), os.path.join(root, 'out.mp4'))
     assert not result['success']
     assert '不存在或为空' in result['message']
+
+def test_media_pipeline_rejects_duplicate_shot_ids(tmp_path):
+    import pytest
+    from core.media_pipeline import MediaPipeline
+
+    pipeline = MediaPipeline()
+    pipeline.root = str(tmp_path)
+    with pytest.raises(ValueError, match="镜头 ID 重复"):
+        pipeline.create("EP-DUP", [{"id": "SHOT-1"}, {"shot_id": "SHOT-1"}])
+
+
+def test_media_pipeline_blocks_assembly_until_every_shot_has_video(tmp_path, monkeypatch):
+    from core.media_pipeline import MediaPipeline
+
+    pipeline = MediaPipeline()
+    pipeline.root = str(tmp_path)
+    state = pipeline.create("EP-INCOMPLETE", [{"id": "SHOT-1"}, {"id": "SHOT-2"}])
+    video = tmp_path / "shot1.mp4"
+    video.write_bytes(b"video")
+    assert pipeline.register_artifact(state["pipeline_id"], "SHOT-1", "video", str(video))["success"]
+    result = pipeline.assemble(state["pipeline_id"], str(tmp_path / "out.mp4"))
+    assert result["success"] is False
+    assert result["blocked"] is True
+    assert result["missing_shots"] == ["SHOT-2"]
+    assert "阻止跳过镜头" in result["message"]
+
+
+def test_media_pipeline_assembly_uses_all_shots_in_storyboard_order(tmp_path, monkeypatch):
+    from core.media_pipeline import MediaPipeline
+
+    pipeline = MediaPipeline()
+    pipeline.root = str(tmp_path)
+    state = pipeline.create("EP-ORDER", [{"id": "SHOT-1"}, {"id": "SHOT-2"}])
+    first, second = tmp_path / "first.mp4", tmp_path / "second.mp4"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    pipeline.register_artifact(state["pipeline_id"], "SHOT-2", "video", str(second))
+    pipeline.register_artifact(state["pipeline_id"], "SHOT-1", "video", str(first))
+    captured = {}
+    monkeypatch.setattr("core.media_pipeline.local_media_engine",
+                        __import__("types").SimpleNamespace(concat_videos=lambda paths, output: captured.update(paths=paths) or {"success": True}))
+    result = pipeline.assemble(state["pipeline_id"], str(tmp_path / "out.mp4"))
+    assert result["success"] is True
+    assert captured["paths"] == [str(first.resolve()), str(second.resolve())]
+
+
+def test_media_pipeline_rejects_unknown_artifact_kind(tmp_path):
+    from core.media_pipeline import MediaPipeline
+
+    pipeline = MediaPipeline()
+    pipeline.root = str(tmp_path)
+    state = pipeline.create("EP-KIND", [{"id": "SHOT-1"}])
+    result = pipeline.register_artifact(state["pipeline_id"], "SHOT-1", "made_up", str(tmp_path / "fake"))
+    assert result["success"] is False
+    assert "不支持的产物类型" in result["message"]
