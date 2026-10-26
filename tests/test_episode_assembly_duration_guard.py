@@ -109,3 +109,37 @@ def test_assembly_blocks_invalid_episode_duration_before_audio_prepare(tmp_path,
     result = pipeline.assemble("EP-NAN")
     assert result["status"] == "blocked"
     assert "剧集目标时长无效" in result["stages"]["assemble"]["result"]["message"]
+
+
+def test_assembly_blocks_duration_drift_that_old_eight_percent_tolerance_allowed(tmp_path, monkeypatch):
+    import core.episode_pipeline as module
+
+    source = tmp_path / "shot.mp4"
+    source.write_bytes(b"fixture")
+    pipeline = EpisodePipeline(project_dir=str(tmp_path))
+    record = _pipeline_record("EP-DRIFT", 60)
+    record["stages"]["media"] = {"status": "done", "result": {"success": True}}
+    pipeline._save(record)
+
+    monkeypatch.setattr(module.shot_production_engine, "load", lambda _run_id: {
+        "shots": [{
+            "shot_id": "SHOT-1", "index": 1, "spec": {"duration_seconds": 56},
+            "artifacts": [{"kind": "video", "path": str(source)}],
+        }]
+    })
+    monkeypatch.setattr(module.local_media_engine, "probe", lambda _path: {
+        "success": True, "duration_seconds": 56,
+    })
+    monkeypatch.setattr(module.local_media_engine, "normalize_video_clip", lambda _src, dst, **kwargs: {
+        "success": True, "duration_seconds": 56, "path": dst,
+    })
+    monkeypatch.setattr(module.episode_audio_engine, "prepare", lambda *a, **k: (
+        (_ for _ in ()).throw(AssertionError("audio must not start for mistimed timeline"))
+    ))
+
+    result = pipeline.assemble("EP-DRIFT")
+    assert result["status"] == "blocked"
+    detail = result["stages"]["assemble"]["result"]["detail"]
+    assert detail["expected_duration_seconds"] == 60
+    assert detail["actual_duration_seconds"] == 56
+    assert detail["tolerance_seconds"] == 0.3
