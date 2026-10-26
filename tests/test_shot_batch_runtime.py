@@ -130,3 +130,31 @@ def test_reconcile_discards_checkpoint_if_prompt_changed(tmp_path):
     assert "resumed_from_checkpoint" not in reconciled
     assert reconciled["jobs"][0]["status"] == "planned"
     assert reconciled["jobs"][0]["prompt"] == "new"
+
+
+def test_reconcile_discards_checkpoint_when_render_signature_changes(tmp_path):
+    state = tmp_path / "batch.json"
+    previous = {
+        "execution_signature": "old-model-and-workflow",
+        "jobs": [{
+            "job_id": "WF__S1", "shot_id": "S1", "shot_index": 1,
+            "duration_seconds": 5, "prompt": "p", "visual_prompt": "v",
+            "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+            "output_path": "output/shots/WF/S1.mp4", "status": "done",
+            "attempt": 1, "outputs": [],
+        }],
+    }
+    state.write_text(json.dumps(previous), encoding="utf-8")
+    fresh = {
+        "execution_signature": "new-model-or-workflow",
+        "jobs": [{
+            "job_id": "WF__S1", "shot_id": "S1", "shot_index": 1,
+            "duration_seconds": 5, "prompt": "p", "visual_prompt": "v",
+            "dialogue": "", "voiceover": "", "scene_id": "", "character_ids": [],
+            "output_path": "output/shots/WF/S1.mp4", "status": "planned",
+            "attempt": 0, "outputs": [],
+        }],
+    }
+    result = load_or_reconcile_shot_batch_manifest(fresh, str(state))
+    assert result["jobs"][0]["status"] == "planned"
+    assert "resumed_from_checkpoint" not in result
