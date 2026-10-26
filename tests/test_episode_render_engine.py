@@ -78,3 +78,27 @@ def test_episode_edit_builder_pads_short_video_to_target_duration(tmp_path):
     assert "tpad=stop_mode=clone:stop_duration=90" in filter_graph
     assert "trim=duration=90" in filter_graph
     assert result["target_duration_seconds"] == 90
+
+
+def test_episode_edit_ignores_stale_video_from_failed_task(tmp_path):
+    workflow = _workflow(tmp_path)
+    workflow["tasks"][1]["status"] = "failed"
+    result = build_episode_edit_command(workflow, str(tmp_path / "final.mp4"))
+    assert result["video_inputs"] == [str((tmp_path / "title.mp4").resolve())]
+    assert str((tmp_path / "clip.mp4").resolve()) not in result["video_inputs"]
+
+
+def test_episode_edit_ignores_stale_audio_from_incomplete_tasks(tmp_path):
+    workflow = _workflow(tmp_path)
+    workflow["tasks"][2]["status"] = "failed"
+    workflow["tasks"][3]["status"] = "pending"
+    with pytest.raises(ValueError, match="没有可用的配音/音效"):
+        build_episode_edit_command(workflow, str(tmp_path / "final.mp4"))
+
+
+def test_episode_edit_does_not_use_subtitles_from_pending_prompt_task(tmp_path):
+    workflow = _workflow(tmp_path)
+    workflow["tasks"][4]["status"] = "pending"
+    result = build_episode_edit_command(workflow, str(tmp_path / "final.mp4"))
+    assert result["subtitle_path"] is None
+    assert "-c:s" not in result["command"]
