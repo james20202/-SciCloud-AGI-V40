@@ -124,7 +124,7 @@ class PromptEngine:
         result = self.render('cinematic_shot', variables, model)
         # Keep the image prompt grounded in the actual visual description even when
         # a user's saved template does not expose the optional {{visual_prompt}} slot.
-        prompt_parts = [result.get('prompt', ''), visual_description, action, expression]
+        prompt_parts = [result.get('prompt', ''), visual_description, character_context, action, expression]
         result['prompt'] = ', '.join(dict.fromkeys(part.strip() for part in prompt_parts if isinstance(part, str) and part.strip()))
         if constraints.get('positive'):
             result['prompt'] += ', ' + ', '.join(constraints['positive'])
