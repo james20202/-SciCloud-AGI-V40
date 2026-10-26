@@ -11,6 +11,7 @@ from core.storyboard_engine import storyboard_director
 from core.qc_engine import qc_engine
 from core.motion_graphics_engine import motion_graphics_engine
 from core.shot_contract import normalize_shot, build_shot_manifest
+from core.shot_batch import build_shot_batch_manifest
 from core.audio_timeline import build_audio_timeline, build_narration_script, render_srt
 from core.episode_package import build_episode_package
 from core.episode_render_engine import build_episode_edit_command
@@ -224,8 +225,16 @@ class ExecutionEngine:
                     }
                     audio_timeline=build_audio_timeline(records)
                     subtitle_srt_draft=render_srt(audio_timeline)
-                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompt_count':len(records),'timing_summary':timing_summary,'timeline_manifest':timeline,'audio_timeline':audio_timeline,'subtitle_srt_draft':subtitle_srt_draft,'prompts':records})
-                    payload={'storyboard_id':storyboard_id,'prompt_count':len(records),'prompts_path':path,'timing_summary':timing_summary}
+                    video_task=next((item for item in wf.get('tasks',[]) if item.get('type')=='video'),{})
+                    batch_manifest=build_shot_batch_manifest(
+                        records,
+                        workflow_id=wid,
+                        target_duration=target_duration,
+                        workflow_registry_id=video_task.get('workflow_registry_id'),
+                        workflow_capability=video_task.get('workflow_capability') or 'video.image2video',
+                    )
+                    path=self._artifact(wf,task,'prompts',{'storyboard_id':storyboard_id,'generated_at':datetime.now().isoformat(timespec='seconds'),'prompt_count':len(records),'timing_summary':timing_summary,'timeline_manifest':timeline,'shot_batch_manifest':batch_manifest,'audio_timeline':audio_timeline,'subtitle_srt_draft':subtitle_srt_draft,'prompts':records})
+                    payload={'storyboard_id':storyboard_id,'prompt_count':len(records),'prompts_path':path,'timing_summary':timing_summary,'shot_batch_count':batch_manifest['shot_count'],'shot_batch_duration_seconds':batch_manifest['planned_duration_seconds']}
                     if target_duration is not None and not timing_summary['within_target_tolerance']:
                         message=f"已生成 {len(records)} 条镜头提示词；镜头总时长 {actual_duration:g}s，与目标 {target_duration:g}s 相差 {actual_duration-target_duration:+g}s"
                     else:
