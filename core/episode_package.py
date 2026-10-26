@@ -23,10 +23,16 @@ def build_episode_package(workflow: dict[str, Any], output_path: str) -> dict[st
         raise ValueError("工作流结构无效，无法打包")
     tasks = workflow["tasks"]
     completed_types = {task.get("type") for task in tasks if isinstance(task, dict) and task.get("status") == "done"}
-    if "edit" not in completed_types:
+    edit_tasks = [task for task in tasks if isinstance(task, dict) and task.get("type") == "edit"]
+    qc_tasks = [task for task in tasks if isinstance(task, dict) and task.get("type") == "qc"]
+    if not edit_tasks or not any(task.get("status") == "done" for task in edit_tasks):
         raise ValueError("最终剪辑任务尚未完成，拒绝生成成片交付包")
-    if "qc" not in completed_types:
+    if any(task.get("status") != "done" for task in edit_tasks):
+        raise ValueError("存在未完成或失败的最终剪辑任务，拒绝生成成片交付包")
+    if not qc_tasks or not any(task.get("status") == "done" for task in qc_tasks):
         raise ValueError("质检任务尚未完成，拒绝生成成片交付包")
+    if any(task.get("status") != "done" for task in qc_tasks):
+        raise ValueError("存在未完成或失败的质检任务，拒绝生成成片交付包")
 
     workflow_id = str(workflow.get("workflow_id") or "workflow")
     plan_id = str(workflow.get("plan_id") or "")
