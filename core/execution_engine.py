@@ -371,6 +371,7 @@ class ExecutionEngine:
                     'workflow_registry_id':task.get('workflow_registry_id') or batch.get('workflow_registry_id'),
                     'workflow_capability':task.get('workflow_capability') or batch.get('workflow_capability'),
                     'workflow_manifest':task.get('workflow_manifest'),
+                    'workflow_graph':task.get('workflow') or context.get('workflow'),
                     'workflow_params':base_params,
                     'workflow_assets':task.get('workflow_assets') or context.get('workflow_assets') or {},
                     'shot_param_bindings':bindings,
