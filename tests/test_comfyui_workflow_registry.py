@@ -244,7 +244,7 @@ def test_comfyui_adapter_infers_prompt_binding_from_registered_workflow(tmp_path
     assert result["bindings"]["duration_seconds"] == "duration_seconds"
 
 
-def test_comfyui_adapter_does_not_infer_when_prompt_parameter_is_ambiguous(tmp_path, monkeypatch):
+def test_comfyui_adapter_prefers_exact_prompt_name_when_multiple_candidates_exist(tmp_path, monkeypatch):
     import core.adapters.comfyui_adapter as adapter_module
     from core.adapters.comfyui_adapter import ComfyUIAdapter
     source = manifest()
