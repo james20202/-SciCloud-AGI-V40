@@ -14,7 +14,7 @@ def _workflow(tmp_path):
     for path in (title, clip, voice, sound):
         path.write_bytes(b"test-media")
     prompt.write_text(json.dumps({
-        "subtitle_srt_draft": "1\\n00:00:00,000 --> 00:00:02,000\\n御剑！\\n"
+        "subtitle_srt_draft": "1\n00:00:00,000 --> 00:00:02,000\n御剑！\n"
     }), encoding="utf-8")
     return {
         "workflow_id": "WF-EDIT-TEST",
