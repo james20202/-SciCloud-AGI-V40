@@ -4,6 +4,7 @@ from uuid import uuid4
 from core.config import PROJECT_DIR
 from core.bible_manager import bible_manager
 from core.prompt_engine import prompt_engine
+from core.director_plan import director_plan_engine
 from core.continuity_engine import continuity_engine
 from core.shot_contract import normalize_shot, normalize_shots
 
@@ -161,7 +162,18 @@ class StoryboardDirector:
     def build_prompt(self, storyboard_id, shot_index, plan=None, model='generic'):
         sb=self.load(storyboard_id)
         if not sb:return None
-        shot=sb['shots'][shot_index]
+        shots=sb.get('shots')
+        if not isinstance(shots, list) or not shots:
+            raise ValueError('分镜没有可生成提示词的镜头')
+        if isinstance(shot_index, bool) or not isinstance(shot_index, int) or not 0 <= shot_index < len(shots):
+            raise ValueError(f'镜头索引越界：{shot_index}')
+        shot=shots[shot_index]
+        # The normal UI path often supplies only storyboard_id. Resolve its source
+        # plan here so character descriptions, scene names and genre are not silently
+        # replaced with generic defaults during prompt generation.
+        if plan is None and sb.get('plan_id'):
+            plan=next((item for item in director_plan_engine.load_plans()
+                       if isinstance(item, dict) and item.get('plan_id') == sb.get('plan_id')), None)
         record=prompt_engine.generate_for_shot(shot, plan, model)
         continuity=continuity_engine.build_prompt_constraints(sb, shot_index)
         record['prompt'] = ', '.join(filter(None,[record.get('prompt',''),shot.get('shot_size'),shot.get('camera_angle'),shot.get('camera_movement'),shot.get('composition'),shot.get('action'),shot.get('expression'),shot.get('lighting'),f"rhythm: {shot.get('rhythm')}"] + continuity))
