@@ -263,3 +263,28 @@ def test_comfyui_adapter_prefers_exact_prompt_name_when_multiple_candidates_exis
     result = ComfyUIAdapter().infer_shot_param_bindings({"workflow_registry_id": "local-video"}, {})
     assert result["success"] is True
     assert result["bindings"]["prompt"] == "prompt"
+
+
+def test_shot_batch_preflight_rejects_fractional_duration_for_integer_parameter(tmp_path, monkeypatch):
+    import core.adapters.comfyui_adapter as adapter_module
+    from core.adapters.comfyui_adapter import ComfyUIAdapter
+    source = manifest()
+    source["graph"]["3"] = {"class_type": "CLIPTextEncode", "inputs": {"text": "default"}}
+    source["params"].extend([
+        {"name": "positive_prompt", "type": "string", "inject": {"type": "scalar", "to": [["3", "text"]]}},
+        {"name": "duration_seconds", "type": "integer", "inject": {"type": "scalar", "to": [["2", "steps"]]}},
+    ])
+    builtin = tmp_path / "builtin"
+    user = tmp_path / "user"
+    builtin.mkdir()
+    user.mkdir()
+    (user / "local-video.json").write_text(json.dumps(source), encoding="utf-8")
+    monkeypatch.setattr(adapter_module, "BUILTIN_WORKFLOW_DIR", str(builtin))
+    monkeypatch.setattr(adapter_module, "USER_WORKFLOW_DIR", str(user))
+    result = ComfyUIAdapter().preflight_shot_batch(
+        {"workflow_registry_id": "local-video", "workflow_assets": {"checkpoint": "local.safetensors"}},
+        {"prompt": "positive_prompt", "duration_seconds": "duration_seconds"},
+        {"shot_batch_jobs": [{"shot_id": "S1", "duration_seconds": 5.5}]},
+    )
+    assert result["success"] is False
+    assert "包含小数" in result["message"]
