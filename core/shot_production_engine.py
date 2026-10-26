@@ -1,4 +1,4 @@
-import json, os, uuid
+import json, os, tempfile, uuid
 from datetime import datetime
 from core.config import PROJECT_DIR
 from core.production_engine import production_engine
@@ -17,15 +17,30 @@ class ShotProductionEngine:
     def __init__(self):
         self.root=os.path.join(PROJECT_DIR,'shot_runs'); os.makedirs(self.root,exist_ok=True)
     def _now(self): return datetime.now().isoformat(timespec='seconds')
-    def _path(self, run_id): return os.path.join(self.root,run_id+'.json')
+    def _path(self, run_id):
+        if not isinstance(run_id, str) or not run_id.strip() or run_id in {'.', '..'}:
+            raise ValueError('run_id 无效')
+        if '/' in run_id or chr(92) in run_id or chr(0) in run_id:
+            raise ValueError('run_id 不允许包含路径分隔符或空字符')
+        return os.path.join(self.root,run_id+'.json')
     def _save(self, data):
         if any(s.get('status') == 'running' for s in data.get('shots', [])):
             data['status'] = 'running'
         data['updated_at']=self._now()
         # Keep the human-readable JSON snapshot for compatibility while making
         # SQLite the durable recovery source for task state and result payloads.
-        with open(self._path(data['run_id']),'w',encoding='utf-8') as f:
-            json.dump(data,f,ensure_ascii=False,indent=2)
+        path = self._path(data['run_id'])
+        os.makedirs(self.root, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(prefix='.shot-run-', suffix='.tmp', dir=self.root)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
         _job_store[data['run_id']] = {
             'kind': 'shot_run',
             'status': data.get('status', 'ready'),
@@ -37,9 +52,29 @@ class ShotProductionEngine:
         }
         return data
     def create_run(self, episode_id, shots):
+        if not isinstance(episode_id, str) or not episode_id.strip() or episode_id in {'.', '..'}:
+            raise ValueError('episode_id 无效')
+        if '/' in episode_id or chr(92) in episode_id or chr(0) in episode_id:
+            raise ValueError('episode_id 不允许包含路径分隔符或空字符')
+        if shots is None:
+            shots = []
+        if not isinstance(shots, list):
+            raise ValueError('shots 必须是列表')
+        if any(not isinstance(item, dict) for item in shots):
+            raise ValueError('每个镜头必须是对象')
+        ids = []
+        for i, item in enumerate(shots, 1):
+            sid = item.get('shot_id') or f'SHOT-{i:03d}'
+            if not isinstance(sid, str) or not sid.strip() or sid in {'.', '..'}:
+                raise ValueError(f'第 {i} 个镜头的 shot_id 无效')
+            if '/' in sid or chr(92) in sid or chr(0) in sid:
+                raise ValueError(f'镜头 shot_id 不允许包含路径分隔符或空字符：{sid!r}')
+            ids.append(sid)
+        if len(set(ids)) != len(ids):
+            raise ValueError('镜头 shot_id 重复，拒绝创建生产任务')
         rid='SHOTRUN-'+uuid.uuid4().hex[:10].upper()
         data={'run_id':rid,'episode_id':episode_id,'created_at':self._now(),'updated_at':self._now(),'status':'ready','shots':[]}
-        for i,s in enumerate(shots or [],1):
+        for i,s in enumerate(shots,1):
             sid=s.get('shot_id') or f'SHOT-{i:03d}'
             spec=dict(s)
             data['shots'].append({'shot_id':sid,'index':i,'spec':spec,'input_fingerprint':shot_fingerprint(spec),'status':'ready','attempts':0,'artifacts':[],'last_result':None})
