@@ -5,37 +5,55 @@ https://github.com/tccnnd/Comic-drama (docs/canonical_timeline.md).
 This module is an independent implementation adapted to SciCloud's episode schema.
 """
 import json
+import math
 import os
+import tempfile
 from datetime import datetime
 
 
 def _number(value, fallback=0.0):
     try:
-        return max(0.0, float(value))
-    except (TypeError, ValueError):
+        number = float(value)
+        return max(0.0, number) if math.isfinite(number) else float(fallback)
+    except (TypeError, ValueError, OverflowError):
         return float(fallback)
 
 
 def build_episode_timeline(episode, shot_job, clip_records, output_path, final_video=None):
     """Write a stable, inspectable timeline with real/fallback media provenance."""
+    if not isinstance(episode, dict):
+        raise ValueError("episode 必须是对象")
+    if not isinstance(clip_records, list) or not clip_records:
+        raise ValueError("时间轴必须至少包含一个镜头媒体记录")
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     cursor = 0.0
+    seen_shot_ids = set()
     picture = []
     scene_index = []
     real_video_count = 0
     fallback_count = 0
     for order, record in enumerate(clip_records, 1):
+        if not isinstance(record, dict):
+            raise ValueError(f"第 {order} 个镜头媒体记录不是对象")
+        raw_path = record.get("path")
+        if not isinstance(raw_path, str) or not raw_path or not os.path.isfile(raw_path) or os.path.getsize(raw_path) <= 0:
+            raise ValueError(f"第 {order} 个镜头媒体文件不存在或为空")
         duration = _number(record.get("duration_seconds"), 0)
+        spec = record.get("spec") if isinstance(record.get("spec"), dict) else {}
         if duration <= 0:
-            spec = record.get("spec") or {}
             duration = _number(spec.get("duration_seconds", spec.get("duration", 5)), 5)
-        source = os.path.abspath(record.get("path", ""))
+        if not math.isfinite(duration) or duration <= 0:
+            raise ValueError(f"第 {order} 个镜头时长必须是有限正数")
+        source = os.path.abspath(raw_path)
         is_real_video = record.get("source_kind") == "video"
         if is_real_video:
             real_video_count += 1
         else:
             fallback_count += 1
-        shot_id = str(record.get("shot_id") or f"SHOT-{order:03d}")
+        shot_id = str(record.get("shot_id") or f"SHOT-{order:03d}").strip()
+        if not shot_id or shot_id in seen_shot_ids:
+            raise ValueError(f"镜头 ID 为空或重复：{shot_id or '(empty)'}")
+        seen_shot_ids.add(shot_id)
         scene_id = str(record.get("scene_id") or (record.get("spec") or {}).get("scene_id") or "")
         clip = {
             "item_type": "clip",
@@ -57,8 +75,13 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
                     "source_kind": str(record.get("source_kind") or "unknown"),
                     "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 },
-                "visual_prompt": str((record.get("spec") or {}).get("visual_prompt") or ""),
-                "camera_movement": str((record.get("spec") or {}).get("camera_movement") or ""),
+                "visual_prompt": str(spec.get("visual_prompt") or spec.get("prompt") or ""),
+                "camera_movement": str(spec.get("camera_movement") or ""),
+                "dialogue": str(spec.get("dialogue") or ""),
+                "voiceover": str(spec.get("voiceover") or spec.get("narration") or ""),
+                "character_ids": spec.get("character_ids") or [],
+                "location_id": str(spec.get("location_id") or ""),
+                "target_duration_seconds": _number(record.get("target_duration_seconds"), duration),
             },
         }
         picture.append(clip)
@@ -111,6 +134,15 @@ def build_episode_timeline(episode, shot_job, clip_records, output_path, final_v
         "final_video": os.path.abspath(final_video) if final_video else None,
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(timeline, f, ensure_ascii=False, indent=2)
+    fd, temp_path = tempfile.mkstemp(prefix=".canonical-timeline-", suffix=".tmp",
+                                     dir=os.path.dirname(os.path.abspath(output_path)))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(timeline, f, ensure_ascii=False, indent=2, allow_nan=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, output_path)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
     return {"success": True, "path": os.path.abspath(output_path), "timeline": timeline}
