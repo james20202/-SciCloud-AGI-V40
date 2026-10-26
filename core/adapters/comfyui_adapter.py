@@ -87,6 +87,49 @@ class ComfyUIAdapter(BaseAdapter):
             return None, 'ComfyUI 任务缺少 API 格式 workflow JSON，未执行。'
         return workflow, None
 
+    def infer_shot_param_bindings(self, task, context=None):
+        """Infer safe per-shot parameter bindings only from an unambiguous registered manifest."""
+        context = context or {}
+        if not isinstance(task, dict):
+            return {"success": False, "bindings": {}, "message": "任务必须是对象。"}
+        manifest = task.get("workflow_manifest") or context.get("workflow_manifest")
+        registry_id = task.get("workflow_registry_id") or context.get("workflow_registry_id")
+        registry = WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR)
+        try:
+            if manifest is None and registry_id:
+                manifest = registry.get(registry_id)
+            if manifest is None:
+                requested = task.get("workflow_capability") or context.get("workflow_capability") or "video.image2video"
+                matches = [item for item in registry.list() if item.get("capability") == requested]
+                if len(matches) != 1:
+                    return {"success": False, "bindings": {}, "message": "无法唯一确定已登记的工作流。"}
+                manifest = matches[0]
+            checked = validate_manifest(manifest)
+            if checked.get("capability") not in {"video.text2video", "video.image2video", "video.reference2video"}:
+                return {"success": False, "bindings": {}, "message": "登记的工作流不是视频生成能力。"}
+            params = [item for item in checked.get("params", []) if isinstance(item, dict)]
+            names = {str(item.get("name", "")).strip().lower(): item.get("name") for item in params}
+            # Exact names only: do not guess at arbitrary custom parameters.
+            prompt_candidates = ("prompt", "positive_prompt", "prompt_text", "text", "positive")
+            selected = None
+            for candidate in prompt_candidates:
+                if candidate in names:
+                    selected = names[candidate]
+                    break
+            if not selected:
+                return {"success": False, "bindings": {}, "message": "工作流没有可识别的提示词参数。"}
+            bindings = {"prompt": selected}
+            for field, candidates in (
+                ("duration_seconds", ("duration_seconds", "seconds", "length_seconds", "duration")),
+                ("shot_id", ("shot_id", "scene_id")),
+            ):
+                found = [names[name] for name in candidates if name in names]
+                if len(found) == 1 and found[0] not in bindings.values():
+                    bindings[field] = found[0]
+            return {"success": True, "bindings": bindings, "workflow_id": checked.get("id"), "auto_inferred": True}
+        except (WorkflowManifestError, TypeError, ValueError) as exc:
+            return {"success": False, "bindings": {}, "message": f"无法推断逐镜头参数：{exc}"}
+
     def preflight_shot_batch(self, task, bindings, context=None):
         """Validate a per-shot task against its registered manifest before any render starts."""
         context = context or {}
