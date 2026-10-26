@@ -222,3 +222,44 @@ def test_shot_batch_preflight_rejects_unknown_static_params(tmp_path, monkeypatc
         {"prompt": "positive_prompt"}, {})
     assert result["success"] is False
     assert "未声明参数" in result["message"]
+
+
+def test_comfyui_adapter_infers_prompt_binding_from_registered_workflow(tmp_path, monkeypatch):
+    import core.adapters.comfyui_adapter as adapter_module
+    from core.adapters.comfyui_adapter import ComfyUIAdapter
+    source = manifest()
+    source["graph"]["3"] = {"class_type": "CLIPTextEncode", "inputs": {"text": "default"}}
+    source["params"].append({"name": "positive_prompt", "type": "string", "inject": {"type": "scalar", "to": [["3", "text"]]}})
+    source["params"].append({"name": "duration_seconds", "type": "float", "inject": {"type": "scalar", "to": [["2", "cfg"]]}})
+    builtin = tmp_path / "builtin"
+    user = tmp_path / "user"
+    builtin.mkdir()
+    user.mkdir()
+    (user / "local-video.json").write_text(json.dumps(source), encoding="utf-8")
+    monkeypatch.setattr(adapter_module, "BUILTIN_WORKFLOW_DIR", str(builtin))
+    monkeypatch.setattr(adapter_module, "USER_WORKFLOW_DIR", str(user))
+    result = ComfyUIAdapter().infer_shot_param_bindings({"workflow_registry_id": "local-video"}, {})
+    assert result["success"] is True
+    assert result["bindings"]["prompt"] == "positive_prompt"
+    assert result["bindings"]["duration_seconds"] == "duration_seconds"
+
+
+def test_comfyui_adapter_does_not_infer_when_prompt_parameter_is_ambiguous(tmp_path, monkeypatch):
+    import core.adapters.comfyui_adapter as adapter_module
+    from core.adapters.comfyui_adapter import ComfyUIAdapter
+    source = manifest()
+    source["graph"]["3"] = {"class_type": "CLIPTextEncode", "inputs": {"text": "default"}}
+    source["params"].extend([
+        {"name": "prompt", "type": "string", "inject": {"type": "scalar", "to": [["3", "text"]]}},
+        {"name": "positive_prompt", "type": "string", "inject": {"type": "scalar", "to": [["3", "text"]]}},
+    ])
+    builtin = tmp_path / "builtin"
+    user = tmp_path / "user"
+    builtin.mkdir()
+    user.mkdir()
+    (user / "local-video.json").write_text(json.dumps(source), encoding="utf-8")
+    monkeypatch.setattr(adapter_module, "BUILTIN_WORKFLOW_DIR", str(builtin))
+    monkeypatch.setattr(adapter_module, "USER_WORKFLOW_DIR", str(user))
+    result = ComfyUIAdapter().infer_shot_param_bindings({"workflow_registry_id": "local-video"}, {})
+    assert result["success"] is True
+    assert result["bindings"]["prompt"] == "prompt"
