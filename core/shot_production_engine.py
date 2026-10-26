@@ -175,8 +175,12 @@ class ShotProductionEngine:
             return self.status(run_id)
         shot['attempts']=int(shot.get('attempts') or 0)+1; shot['status']='running'; self._save(d)
         spec=shot['spec']; result={'success':True,'steps':[]}; image=spec.get('image_path'); video=spec.get('video_path'); audio=spec.get('audio_path')
-        if image and os.path.isfile(image):
+        if image and os.path.isfile(image) and os.path.getsize(image)>0:
             self._register(shot,image,'image'); result['steps'].append('existing_image')
+        elif video and os.path.isfile(video) and os.path.getsize(video)>0:
+            # A previously rendered video is already a valid shot artifact. Do not
+            # require an image or rerun ComfyUI merely to register/reuse it.
+            self._register(shot,video,'video'); result['steps'].append('existing_video')
         elif spec.get('comfy_workflow'):
             r=production_engine.submit_comfy(spec['comfy_workflow'],'shot_media',run_id,character_references=spec.get('character_reference_assets',[]))
             result['steps'].append(r)
@@ -185,7 +189,7 @@ class ShotProductionEngine:
             else:
                 for artifact in r.get('outputs',[]): self._register(shot,artifact)
         else:
-            result['success']=False; result.update(self._blocked('没有镜头图片，也没有 ComfyUI API workflow。','image_generation')); shot['status']='blocked'
+            result['success']=False; result.update(self._blocked('没有有效镜头图片、已有视频或 ComfyUI API workflow。','image_generation')); shot['status']='blocked'
         if result['success'] and video and os.path.isfile(video): self._register(shot,video,'video')
         if result['success'] and audio and os.path.isfile(audio): self._register(shot,audio,'audio')
         shot['artifacts']=valid_artifacts(shot.get('artifacts',[]))
