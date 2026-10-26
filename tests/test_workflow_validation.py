@@ -4,7 +4,7 @@ from core.workflow_engine import WorkflowEngine, STATUS_READY, STATUS_PENDING
 
 
 def test_workflow_links_storyboard_to_every_task(tmp_path, monkeypatch):
-    storyboard = {"storyboard_id": "STORYBOARD-TEST", "shots": []}
+    storyboard = {"storyboard_id": "STORYBOARD-TEST", "shots": [{"shot_id": "SHOT-1", "duration": 5, "visual_prompt": "测试镜头"}]}
     monkeypatch.setattr("core.workflow_engine.storyboard_director",
                         SimpleNamespace(create_from_plan=lambda plan: storyboard))
     engine = WorkflowEngine(project_dir=str(tmp_path))
@@ -45,3 +45,16 @@ def test_empty_workflow_is_not_reported_completed():
     wf = {"tasks": [], "paused": False}
     engine._refresh_ready(wf)
     assert wf["status"] == "ready"
+
+
+def test_workflow_rejects_empty_storyboard_before_persisting(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "core.workflow_engine.storyboard_director",
+        SimpleNamespace(create_from_plan=lambda plan: {"storyboard_id": "STORYBOARD-EMPTY", "shots": []}),
+    )
+    engine = WorkflowEngine(project_dir=str(tmp_path))
+    plan = {"plan_id": "PLAN-EMPTY-STORYBOARD", "tasks": [{"id": "TASK-1", "type": "story"}]}
+
+    with pytest.raises(ValueError, match="分镜没有有效镜头"):
+        engine.create_from_plan(plan)
+    assert list((tmp_path / "workflows").glob("*.json")) == []

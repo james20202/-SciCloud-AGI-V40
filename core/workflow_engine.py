@@ -68,8 +68,23 @@ class WorkflowEngine:
             if not t.get('type'):
                 raise ValueError(f"任务 {t['id']} 缺少 type")
         storyboard=storyboard_director.create_from_plan(plan)
+        if not isinstance(storyboard, dict):
+            raise RuntimeError('分镜引擎未返回有效分镜对象')
         storyboard_id=storyboard.get('storyboard_id')
         if not storyboard_id: raise RuntimeError('分镜引擎未返回 storyboard_id')
+        storyboard_shots=storyboard.get('shots')
+        if not isinstance(storyboard_shots, list) or not storyboard_shots:
+            raise ValueError('分镜没有有效镜头，拒绝创建工作流')
+        # Validate the canonical shot contract before persisting a workflow. This
+        # prevents a plan with empty/malformed storyboard data from creating a
+        # workflow whose downstream prompt/media stages can never succeed.
+        from core.shot_contract import normalize_shots
+        try:
+            normalized_shots=normalize_shots(storyboard_shots)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'分镜镜头数据无效：{exc}') from exc
+        if len(normalized_shots) != len(storyboard_shots):
+            raise ValueError('分镜镜头数量校验失败')
         deps={
             'story':[], 'character':['story'], 'scene':['story'], 'storyboard':['character','scene'],
             'prompt':['storyboard'], 'image':['prompt'], 'video':['image'], 'voice':['story'],
