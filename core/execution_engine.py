@@ -288,7 +288,7 @@ class ExecutionEngine:
                         line=dialogue.strip() if isinstance(dialogue,str) and dialogue.strip() else (voiceover.strip() if isinstance(voiceover,str) else '')
                         if line:
                             lines.append(line)
-                    text_input='\\n'.join(lines)
+                    text_input='\n'.join(lines)
                 if not isinstance(text_input,str) or not text_input.strip():
                     raise RuntimeError('分镜中没有可用于配音的对白或旁白；请先补充台词')
                 adapter_task['text']=text_input
