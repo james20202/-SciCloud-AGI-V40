@@ -77,3 +77,8 @@ ComfyUI/
 projects/
 logs/
 backups/
+
+# macOS packaging (PyInstaller) build outputs -- the spec itself is tracked
+build/
+dist/
+packaging/.build-venv/
