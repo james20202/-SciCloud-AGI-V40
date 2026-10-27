@@ -9,6 +9,12 @@ Preflight catches the blockers that the 2026-10-27 golden sample hit late:
 ComfyUI not running, no image.text2image workflow registered, TTS not
 enabled, and ffmpeg/ffprobe invisible to a Finder-launched app. A blocker
 is reported before any task starts, with the action that fixes it.
+
+Since WF-559D10EB (2026-10-27 22:21 JST) the same rule also covers
+video: a pending video task (TASK-07) needs a video.image2video
+workflow registered. Without one, preflight blocks before any task
+runs instead of letting one-click sail through TASK-01..06 and fail
+at TASK-07 with "ComfyUI 任务缺少 API 格式 workflow JSON".
 """
 import os
 from urllib import request
@@ -30,8 +36,14 @@ def _comfyui_reachable(endpoint):
         return False
 
 
-def preflight_workflow(workflow, model_finder=None, tool_finder=None):
-    """Return a list of blocker messages for a workflow dict (empty = ready)."""
+def preflight_workflow(workflow, model_finder=None, tool_finder=None, capabilities=None):
+    """Return a list of blocker messages for a workflow dict (empty = ready).
+
+    `capabilities` is an optional override of the registered workflow
+    capabilities (used by tests so they do not depend on the local
+    registry directories). When omitted, capabilities are read from
+    WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR).
+    """
     find_model = model_finder or model_hub.find_for_skill
     find_tool_fn = tool_finder or find_tool
     blockers = []
@@ -51,16 +63,28 @@ def preflight_workflow(workflow, model_finder=None, tool_finder=None):
                 blockers.append(
                     "ComfyUI 未运行（%s 无响应）：请先双击 ComfyUI/start.command 启动它，保持终端窗口打开。" % endpoint
                 )
+        if capabilities is None:
             try:
                 registry = WorkflowRegistry(BUILTIN_WORKFLOW_DIR, USER_WORKFLOW_DIR)
                 capabilities = {item.get("capability") for item in registry.list()}
             except Exception:
                 capabilities = set()
-            if "image.text2image" not in capabilities:
-                blockers.append(
-                    "未找到 image.text2image 工作流：请把 docs/comfyui_workflows/sd15-text2image.json "
-                    "复制到数据目录 data/comfyui_workflows/user/ 下（本机已有该文件时请检查数据目录是否指向打包版目录）。"
-                )
+        if "image.text2image" not in capabilities:
+            blockers.append(
+                "未找到 image.text2image 工作流：请把 docs/comfyui_workflows/sd15-text2image.json "
+                "复制到数据目录 data/comfyui_workflows/user/ 下（本机已有该文件时请检查数据目录是否指向打包版目录）。"
+            )
+        if any(task.get("type") == "video" for task in pending) and "video.image2video" not in capabilities:
+            # Do NOT phrase this as "ComfyUI 未运行": ComfyUI may be up
+            # and the image workflow may be fine; what is missing is a
+            # video workflow/model/node. And do NOT pretend the FFmpeg
+            # zoompan fallback is AI video: it is only an alternative.
+            blockers.append(
+                "未找到 video.image2video 工作流：本机目前没有 AI 视频模型/节点，"
+                "TASK-07 无法用 ComfyUI 执行；可先用 FFmpeg 动态镜头作为替代"
+                "（那是 FFmpeg 动画，不是 AI 视频），或等 AnimateDiff 装好后再跑。"
+                "此 blocker 会阻止一键出片开始执行，而不是跑到一半才失败。"
+            )
     if any(task.get("type") == "voice" for task in pending) and not find_model("voice"):
         blockers.append("TTS 未启用：请到 Model Hub 启用本地 TTS，并配置 say 或其他 TTS 命令。")
     if not find_tool_fn("ffmpeg"):

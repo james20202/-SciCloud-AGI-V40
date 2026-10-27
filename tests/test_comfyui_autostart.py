@@ -218,6 +218,70 @@ def test_env_dir_and_start_command_override_defaults(tmp_path):
     assert autostart.resolve_comfyui_dir() == autostart.DEFAULT_COMFYUI_DIR
 
 
+def test_preflight_blocks_video_without_video_workflow():
+    """WF-559D10EB regression: image-only registry + a pending video
+    task must block before any task runs, not fail at TASK-07."""
+    from core.one_click import preflight_workflow
+
+    workflow = {
+        "workflow_id": "WF-TEST",
+        "tasks": [
+            {"id": "TASK-06", "type": "image", "status": "ready"},
+            {"id": "TASK-07", "type": "video", "status": "ready"},
+        ],
+    }
+    blockers = preflight_workflow(
+        workflow,
+        model_finder=lambda skill: {"endpoint": "http://127.0.0.1:8188"} if skill == "image" else None,
+        tool_finder=lambda name: "/opt/homebrew/bin/" + name,
+        capabilities={"image.text2image"},
+    )
+    video_blockers = [item for item in blockers if "video.image2video" in item]
+    assert len(video_blockers) == 1
+    assert "没有 AI 视频模型/节点" in video_blockers[0]
+    assert "FFmpeg 动态镜头" in video_blockers[0]
+    # The video blocker must not be disguised as a ComfyUI-down error.
+    assert "ComfyUI 未运行" not in video_blockers[0]
+    assert "不是 AI 视频" in video_blockers[0]
+
+
+def test_preflight_no_video_blocker_for_image_only():
+    from core.one_click import preflight_workflow
+
+    workflow = {
+        "workflow_id": "WF-TEST",
+        "tasks": [
+            {"id": "TASK-06", "type": "image", "status": "ready"},
+        ],
+    }
+    blockers = preflight_workflow(
+        workflow,
+        model_finder=lambda skill: {"endpoint": "http://127.0.0.1:8188"} if skill == "image" else None,
+        tool_finder=lambda name: "/opt/homebrew/bin/" + name,
+        capabilities={"image.text2image"},
+    )
+    assert not any("video.image2video" in item for item in blockers)
+
+
+def test_preflight_no_video_blocker_when_video_workflow_registered():
+    from core.one_click import preflight_workflow
+
+    workflow = {
+        "workflow_id": "WF-TEST",
+        "tasks": [
+            {"id": "TASK-06", "type": "image", "status": "ready"},
+            {"id": "TASK-07", "type": "video", "status": "ready"},
+        ],
+    }
+    blockers = preflight_workflow(
+        workflow,
+        model_finder=lambda skill: {"endpoint": "http://127.0.0.1:8188"} if skill == "image" else None,
+        tool_finder=lambda name: "/opt/homebrew/bin/" + name,
+        capabilities={"image.text2image", "video.image2video"},
+    )
+    assert not any("video.image2video" in item for item in blockers)
+
+
 def _run_all():
     import traceback
 
@@ -230,6 +294,9 @@ def _run_all():
         test_missing_everything_reports_without_starting,
         test_second_call_in_same_process_does_not_relaunch,
         test_env_dir_and_start_command_override_defaults,
+        test_preflight_blocks_video_without_video_workflow,
+        test_preflight_no_video_blocker_for_image_only,
+        test_preflight_no_video_blocker_when_video_workflow_registered,
     ]
     failures = 0
     for test in tests:
