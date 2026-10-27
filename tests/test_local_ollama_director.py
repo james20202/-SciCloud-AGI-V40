@@ -125,7 +125,7 @@ def test_local_ollama_later_batch_failure_does_not_partially_mutate_plan(monkeyp
             {"id": shot["id"], "visual_prompt": f"不应写入{shot['id']}", "action": "动作"}
             for shot in request_data["shots"]
         ]
-        if calls == 2:
+        if calls >= 2:
             items[0]["id"] = "WRONG-ID"
         return {"response": json.dumps({
             "logline": "不应写入", "hook": "不应写入",
