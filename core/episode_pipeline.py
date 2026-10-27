@@ -14,6 +14,7 @@ from core.shot_consistency import shot_consistency_engine
 from core.media_quality_engine import media_quality_engine
 from core.character_reference_engine import character_reference_engine
 from core.script_asset_extractor import script_asset_extractor
+from core.episode_acceptance import validate_episode_timeline
 
 class EpisodePipeline:
     """Durable episode pipeline; unavailable media capabilities remain blocked."""
@@ -285,13 +286,30 @@ class EpisodePipeline:
             ('成片没有可识别的视频流' if not has_video_stream else
              f'成片时长与目标不符：目标 {expected:.1f}s，实际 {actual:.1f}s，允许误差 ±{tolerance:.1f}s'))
         timeline_path=os.path.join(self.root,eid,'canonical_timeline.json')
+        timeline_validation={'success':False,'passed':False,'message':'时间线文件不存在',
+                             'errors':[{'code':'missing_timeline','message':'时间线文件不存在'}]}
+        if os.path.isfile(timeline_path):
+            try:
+                with open(timeline_path,encoding='utf-8') as timeline_file:
+                    timeline_data=json.load(timeline_file)
+                timeline_validation=validate_episode_timeline(timeline_data,expected,tolerance)
+            except (OSError,ValueError,TypeError) as exc:
+                timeline_validation={'success':False,'passed':False,'message':f'时间线读取/解析失败：{exc}',
+                                     'errors':[{'code':'timeline_read_failed','message':str(exc)}]}
+        ok=bool(ok and timeline_validation.get('passed',False))
+        if not timeline_validation.get('passed',False):
+            message=timeline_validation.get('message','时间线验收未通过')
+        elif ok:
+            message='媒体质检与时间线验收通过'
         d['stages']['qc']={'status':'done' if ok else 'blocked','result':{
             'success':ok,'path':p,'size':os.path.getsize(p) if basic else 0,
             'probe':probe.get('data') if probe.get('success') else None,
             'duration_seconds':actual,'expected_duration_seconds':expected,
             'duration_tolerance_seconds':tolerance,'duration_ok':duration_ok,'has_video_stream':has_video_stream,
             'timeline_path':timeline_path if os.path.isfile(timeline_path) else None,
-            'quality_report':report,'warnings':report.get('warnings',[]),'errors':report.get('errors',[]),
+            'timeline_validation':timeline_validation,
+            'quality_report':report,'warnings':report.get('warnings',[]),
+            'errors':report.get('errors',[])+timeline_validation.get('errors',[]),
             'message':message}}
         d['stage']='publish'
         return self.status(self._save(d)['episode_id'])
