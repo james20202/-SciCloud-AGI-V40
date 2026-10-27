@@ -2,17 +2,29 @@
 set -e
 APPROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 mkdir -p "$APPROOT/logs"
+# 关键修复：不要只看哪个 python 存在，要看哪个 python 真能 import 依赖。
+# 以前是先找到 /opt/homebrew/bin/python3 就用它，哪怕它没有 PySide6，
+# 之后装了新 python 就会一直弹窗。现在按顺序试每个候选，只有能 import
+# PySide6、PIL 的才算数；都没有时，对系统 python 做一次自动安装，再试
+# 一次，实在不行才弹窗，并且把最后用的 python 写进日志。
 PYTHON=""
-for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
-  if [ -x "$candidate" ]; then PYTHON="$candidate"; break; fi
+for candidate in /usr/bin/python3 /opt/homebrew/bin/python3 /opt/homebrew/bin/python3.12 /usr/local/bin/python3; do
+  if [ -x "$candidate" ] && "$candidate" -c "import PySide6, PIL" >/dev/null 2>&1; then PYTHON="$candidate"; break; fi
 done
+if [ -z "$PYTHON" ] && [ -x /usr/bin/python3 ]; then
+  echo "启动时未找到带 PySide6/Pillow 的 python，尝试用 /usr/bin/python3 自动安装一次依赖。" >> "$APPROOT/logs/app.log"
+  /usr/bin/python3 -m pip install --user -r "$APPROOT/requirements.txt" >> "$APPROOT/logs/app.log" 2>&1 || true
+  for candidate in /usr/bin/python3 /opt/homebrew/bin/python3 /opt/homebrew/bin/python3.12 /usr/local/bin/python3; do
+    if [ -x "$candidate" ] && "$candidate" -c "import PySide6, PIL" >/dev/null 2>&1; then PYTHON="$candidate"; break; fi
+  done
+fi
 if [ -z "$PYTHON" ]; then PYTHON="$(command -v python3 || true)"; fi
 if [ -z "$PYTHON" ]; then osascript -e 'display dialog "未找到 Python 3，请先安装 Python 3。" buttons {"好"}'; exit 1; fi
-# 必需依赖缺失时直接弹窗并退出，不再只把报错写进日志让用户干等。
 if ! "$PYTHON" -c "import PySide6, PIL" >> "$APPROOT/logs/app.log" 2>&1; then
-  osascript -e 'display dialog "缺少运行依赖（PySide6 / Pillow），请先运行：python3 -m pip install -r requirements.txt，详情见 logs/app.log。" buttons {"好"}'
+  osascript -e 'display dialog "缺少运行依赖（PySide6 / Pillow），自动安装也失败了，详情见 logs/app.log。" buttons {"好"}'
   exit 1
 fi
+echo "启动使用 python：$PYTHON" >> "$APPROOT/logs/app.log"
 # 生产工具缺失不阻止打开界面，但要明确提示，而不是等生产时才失败。
 if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
   echo "警告：未找到 FFmpeg/FFprobe，剪辑与质检功能将受限。" >> "$APPROOT/logs/app.log"
