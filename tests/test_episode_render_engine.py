@@ -152,8 +152,8 @@ def test_episode_edit_drops_subtitles_that_fall_after_final_duration(tmp_path):
     prompt = tmp_path / "prompt.json"
     prompt.write_text(json.dumps({
         "subtitle_srt_draft": (
-            "1\\n00:00:58,000 --> 00:01:00,000\\n结尾字幕\\n\\n"
-            "2\\n00:01:01,000 --> 00:01:02,000\\n超出字幕\\n"
+            "1\n00:00:58,000 --> 00:01:00,000\n结尾字幕\n\n"
+            "2\n00:01:01,000 --> 00:01:02,000\n超出字幕\n"
         )
     }), encoding="utf-8")
     workflow["tasks"][4]["outputs"] = [str(prompt)]
