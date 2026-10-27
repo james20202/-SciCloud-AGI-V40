@@ -136,7 +136,7 @@ def test_local_ollama_later_batch_failure_does_not_partially_mutate_plan(monkeyp
     result = engine.enrich_plan(plan)
 
     assert result["mode"] == "deterministic_fallback"
-    assert calls == 2
+    assert calls == 3  # first batch succeeds; second batch is retried once before fallback
     assert plan["story"]["logline"] == before["story"]["logline"]
     assert all("不应写入" not in shot.get("visual_prompt", "") for shot in plan["shots"])
     assert all(shot.get("director_note") for shot in plan["shots"])
