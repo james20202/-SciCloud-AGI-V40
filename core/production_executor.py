@@ -1,10 +1,11 @@
 import json,time,uuid
 from pathlib import Path
 from .local_executor import LocalExecutor
+from core.config import BASE_DIR
 
 class ProductionExecutor:
     def __init__(self, base_dir=None):
-        self.base_dir=Path(base_dir or Path(__file__).resolve().parents[1]); self.root=self.base_dir/'projects'/'production_runs'; self.root.mkdir(parents=True,exist_ok=True)
+        self.base_dir=Path(base_dir or BASE_DIR); self.root=self.base_dir/'projects'/'production_runs'; self.root.mkdir(parents=True,exist_ok=True)
         self.local=LocalExecutor(self.base_dir)
     def create_run(self, episode_id, shots):
         rid='RUN-'+uuid.uuid4().hex[:10].upper(); data={'run_id':rid,'episode_id':episode_id,'status':'ready','shots':shots,'results':{},'created_at':time.time()}; self._save(data); return data

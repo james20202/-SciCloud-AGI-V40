@@ -1,9 +1,11 @@
 import json, os, time, urllib.request, urllib.error
 from pathlib import Path
 
+from core.config import BASE_DIR
+
 class LocalExecutor:
     def __init__(self, base_dir=None, timeout=30):
-        self.base_dir=Path(base_dir or Path(__file__).resolve().parents[1])
+        self.base_dir=Path(base_dir or BASE_DIR)
         self.state_dir=self.base_dir/'projects'/'model_runs'; self.state_dir.mkdir(parents=True,exist_ok=True)
         self.timeout=timeout
     def _url(self, base, path): return base.rstrip('/')+'/'+path.lstrip('/')
