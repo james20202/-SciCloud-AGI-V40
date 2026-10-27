@@ -1,4 +1,5 @@
 import os, shlex, shutil, subprocess
+from core.media_tools import find_tool
 from core.adapters.base import BaseAdapter, AdapterResult
 
 
@@ -10,7 +11,7 @@ class TTSCommandAdapter(BaseAdapter):
         if not cmd:
             return AdapterResult(False, '尚未配置 TTS command')
         executable = shlex.split(cmd)[0] if shlex.split(cmd) else ''
-        found = shutil.which(executable) if executable else None
+        found = find_tool(executable) if executable else None
         return AdapterResult(bool(found), f'TTS command: {found or "未找到可执行文件"}', data={'path': found})
 
     def execute(self, model, task, context):
@@ -21,7 +22,7 @@ class TTSCommandAdapter(BaseAdapter):
             args = shlex.split(cmd) if isinstance(cmd, str) else list(cmd) if isinstance(cmd, (list, tuple)) else None
             if not args or not all(isinstance(arg, str) for arg in args):
                 return AdapterResult(False, 'TTS command 必须是非空字符串或字符串参数列表。')
-            if not shutil.which(args[0]):
+            if not find_tool(args[0]):
                 return AdapterResult(False, f'找不到 TTS 可执行文件：{args[0]}')
 
             text_input = task.get('text') or task.get('input_text') or task.get('script')
@@ -48,7 +49,40 @@ class TTSCommandAdapter(BaseAdapter):
             timeout = int(task.get('timeout', 900))
             if timeout <= 0 or timeout > 7200:
                 return AdapterResult(False, 'TTS timeout 必须在 1 到 7200 秒之间。')
-            process = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+            # macOS say cannot write .wav directly ("Opening output file failed: fmt?").
+            # Only for say + .wav: write a native .aiff first, then convert with FFmpeg.
+            # All other commands keep their original behaviour.
+            is_say_wav = os.path.basename(args[0]) == 'say' and output_path.lower().endswith('.wav')
+            if is_say_wav:
+                aiff_path = output_path[:-4] + '.aiff'
+                say_args = [aiff_path if arg == output_path else arg for arg in args]
+                say_process = subprocess.run(say_args, capture_output=True, text=True, timeout=timeout)
+                if say_process.returncode != 0:
+                    return AdapterResult(False, 'TTS 执行失败', data={
+                        'returncode': say_process.returncode,
+                        'stdout': say_process.stdout[-2000:],
+                        'stderr': say_process.stderr[-4000:],
+                    })
+                ffmpeg = find_tool('ffmpeg')
+                if not ffmpeg:
+                    return AdapterResult(False, 'say 已生成 .aiff，但未找到 FFmpeg，无法转为 .wav。')
+                convert_process = subprocess.run(
+                    [ffmpeg, '-y', '-i', aiff_path, '-c:a', 'pcm_s16le', output_path],
+                    capture_output=True, text=True, timeout=timeout)
+                try:
+                    if os.path.isfile(aiff_path):
+                        os.remove(aiff_path)
+                except OSError:
+                    pass
+                if convert_process.returncode != 0:
+                    return AdapterResult(False, 'TTS .aiff 转 .wav 失败', data={
+                        'returncode': convert_process.returncode,
+                        'stdout': convert_process.stdout[-2000:],
+                        'stderr': convert_process.stderr[-4000:],
+                    })
+                process = convert_process
+            else:
+                process = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
             if process.returncode != 0:
                 return AdapterResult(False, 'TTS 执行失败', data={
                     'returncode': process.returncode,

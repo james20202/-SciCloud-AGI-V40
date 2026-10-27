@@ -1,4 +1,5 @@
 import json, os, shutil, subprocess, time
+from core.media_tools import find_tool
 from urllib import request
 from core.model_hub import model_hub
 
@@ -7,7 +8,7 @@ class ModelRuntime:
     def probe(self, model):
         adapter=model.get('adapter')
         if adapter=='ffmpeg':
-            p=shutil.which(model.get('command') or 'ffmpeg')
+            p=find_tool(model.get('command') or 'ffmpeg')
             return {'model_id':model['model_id'],'ready':bool(p),'reason':p or 'ffmpeg not found','details':{'path':p}}
         if adapter=='comfyui':
             url=(model.get('endpoint') or 'http://127.0.0.1:8188').rstrip('/')+'/system_stats'
@@ -19,7 +20,7 @@ class ModelRuntime:
         if adapter in ('tts_command','vision_command'):
             cmd=(model.get('command') or '').strip()
             if not cmd:return {'model_id':model['model_id'],'ready':False,'reason':'command not configured','details':{}}
-            exe=shutil.which(cmd.split()[0])
+            exe=find_tool(cmd.split()[0])
             return {'model_id':model['model_id'],'ready':bool(exe),'reason':exe or 'executable not found','details':{'path':exe}}
         return {'model_id':model['model_id'],'ready':False,'reason':'unknown adapter','details':{}}
 

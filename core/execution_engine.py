@@ -15,6 +15,7 @@ from core.shot_batch import build_shot_batch_manifest, load_or_reconcile_shot_ba
 from core.audio_timeline import build_audio_timeline, build_narration_script, render_srt
 from core.episode_package import build_episode_package
 from core.episode_render_engine import build_episode_edit_command
+from core.media_tools import find_tool
 
 ADAPTERS={'ffmpeg':FFmpegAdapter(),'comfyui':ComfyUIAdapter(),'tts_command':TTSCommandAdapter()}
 TASK_TO_SKILL={'story':'SKILL-STORY','character':'SKILL-STORY','scene':'SKILL-STORY','storyboard':'SKILL-STORY','prompt':'SKILL-PROMPT','image':'SKILL-IMAGE','video':'SKILL-VIDEO','voice':'SKILL-TTS','sound':'SKILL-SOUND','edit':'SKILL-EDIT','qc':'SKILL-QC','title_card':'SKILL-EDIT','motion_graphics':'SKILL-EDIT','publish':'SKILL-EDIT'}
@@ -338,12 +339,59 @@ class ExecutionEngine:
                         raise RuntimeError('配音任务缺少可用分镜，无法提取对白/旁白')
                     text_input=build_narration_script(storyboard['shots'])
                 if not isinstance(text_input,str) or not text_input.strip():
-                    raise RuntimeError('分镜中没有可用于配音的对白或旁白；请先补充台词')
+                    # Rule-fallback storyboards have empty dialogue/voiceover for every
+                    # shot. Do not fail the voice task for that: fall back to the plan's
+                    # own logline/hook/idea, and label it as a plan fallback, never as
+                    # storyboard dialogue. Only fail when even the plan has no text.
+                    plan_parts = []
+                    try:
+                        plans = director_plan_engine.load_plans()
+                        plan = next((item for item in plans if item.get('plan_id') == wf.get('plan_id')), None)
+                    except Exception:
+                        plan = None
+                    if isinstance(plan, dict):
+                        story = plan.get('story') or {}
+                        if isinstance(story, dict) and isinstance(story.get('logline'), str) and story['logline'].strip():
+                            plan_parts.append(story['logline'].strip())
+                        intent = plan.get('intent') or {}
+                        if isinstance(intent, dict) and isinstance(intent.get('hook'), str) and intent['hook'].strip():
+                            plan_parts.append(intent['hook'].strip())
+                        if isinstance(plan.get('idea'), str) and plan['idea'].strip():
+                            plan_parts.append(plan['idea'].strip())
+                    text_input = '。'.join(plan_parts)
+                    if text_input:
+                        text_input += '。'
+                        adapter_task['narration_source'] = 'plan_fallback'
+                if not isinstance(text_input,str) or not text_input.strip():
+                    raise RuntimeError('分镜中没有可用于配音的对白或旁白，导演计划也没有可朗读的梗概；请先补充台词')
                 adapter_task['text']=text_input
                 adapter_task.setdefault(
                     'output_path',
                     os.path.join(PROJECT_DIR,'output','voice',safe_wid,f'{safe_tid}.wav')
                 )
+            if task.get('type') == 'sound' and model.get('adapter') == 'ffmpeg' and not task.get('command'):
+                # A sound task without a concrete command used to fail in the FFmpeg
+                # adapter with "需要具体 command". Generate an ambient bed (not BGM,
+                # not music) at the task's duration so edit can proceed, and label it.
+                adapter_task = dict(task)
+                try:
+                    duration = float(task.get('duration_seconds') or task.get('duration') or 60)
+                except (TypeError, ValueError, OverflowError):
+                    duration = 60.0
+                if not duration or duration <= 0:
+                    duration = 60.0
+                sound_output = task.get('output_path') or os.path.join(
+                    PROJECT_DIR, 'output', 'sound', safe_wid, f'{safe_tid}_sound.m4a')
+                os.makedirs(os.path.dirname(os.path.abspath(sound_output)), exist_ok=True)
+                ffmpeg_path = find_tool(model.get('command') or 'ffmpeg') or 'ffmpeg'
+                adapter_task['command'] = [
+                    ffmpeg_path, '-y', '-f', 'lavfi', '-i',
+                    f'anoisesrc=color=brown:duration={duration}',
+                    '-af', 'lowpass=f=400,volume=0.15', '-t', str(duration),
+                    '-c:a', 'aac', '-b:a', '96k', sound_output,
+                ]
+                adapter_task['sound_source'] = 'ambient_fallback'
+                context['command'] = adapter_task['command']
             inferred_bindings = {}
             batch_requested = (
                 task.get('shot_batch_enabled') is True
