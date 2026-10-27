@@ -8,8 +8,9 @@ def test_create_from_plan_preserves_explicit_scene_character_prompt_and_dialogue
     plan = {
         "plan_id": "PLAN-REGRESSION",
         "title": "Storyboard mapping regression",
-        "characters": [{"id": "CHAR-DEFAULT", "name": "Fallback character"}],
-        # Intentionally no scenes array: explicit scene_id must still survive.
+        "characters": [{"id": "CHAR-DEFAULT", "name": "Fallback character"}, {"id": "CHAR-2", "name": "Character 2"}, {"id": "CHAR-3", "name": "Character 3"}],
+        "scenes": [{"id": "SCENE-EXPLICIT", "name": "Explicit scene"}],
+        # Explicit scene and character refs must exist in the source plan.
         "shots": [
             {
                 "id": "SHOT-0001",
@@ -41,7 +42,8 @@ def test_create_from_plan_uses_scene_fallback_when_explicit_scene_is_missing(tmp
     plan = {
         "plan_id": "PLAN-FALLBACK",
         "scenes": [{"id": "SCENE-1"}, {"id": "SCENE-2"}],
-        "shots": [{"id": "SHOT-1"}, {"id": "SHOT-2"}, {"id": "SHOT-3"}, {"id": "SHOT-4"}],
+        "characters": [{"id": "CHAR-1", "name": "主角"}],
+        "shots": [{"id": "SHOT-1", "visual_prompt": "画面1", "character_ids": ["CHAR-1"]}, {"id": "SHOT-2", "visual_prompt": "画面2", "character_ids": ["CHAR-1"]}, {"id": "SHOT-3", "visual_prompt": "画面3", "character_ids": ["CHAR-1"]}, {"id": "SHOT-4", "visual_prompt": "画面4", "character_ids": ["CHAR-1"]}],
     }
 
     storyboard = director.create_from_plan(plan)
@@ -93,7 +95,9 @@ def test_storyboard_save_is_atomic_and_replaces_valid_json(tmp_path):
     director = StoryboardDirector(directory=str(tmp_path))
     storyboard = director.create_from_plan({
         "plan_id": "PLAN-ATOMIC",
-        "shots": [{"id": "SHOT-1", "duration": 3}],
+        "scenes": [{"id": "SCENE-1", "name": "场景"}],
+        "characters": [{"id": "CHAR-1", "name": "主角"}],
+        "shots": [{"id": "SHOT-1", "scene_id": "SCENE-1", "character_ids": ["CHAR-1"], "visual_prompt": "有效画面", "duration": 3}],
     })
     path = tmp_path / (storyboard["storyboard_id"] + ".json")
     storyboard["title"] = "更新后标题"
@@ -145,7 +149,12 @@ def test_build_prompt_rejects_out_of_range_shot_index(tmp_path):
     import pytest
 
     director = StoryboardDirector(directory=str(tmp_path))
-    storyboard = director.create_from_plan({"plan_id": "PLAN-INDEX", "shots": [{"id": "SHOT-1"}]})
+    storyboard = director.create_from_plan({
+        "plan_id": "PLAN-INDEX",
+        "scenes": [{"id": "SCENE-1", "name": "场景"}],
+        "characters": [{"id": "CHAR-1", "name": "主角"}],
+        "shots": [{"id": "SHOT-1", "scene_id": "SCENE-1", "character_ids": ["CHAR-1"], "visual_prompt": "有效画面", "duration": 5}],
+    })
     with pytest.raises(ValueError, match="镜头索引越界"):
         director.build_prompt(storyboard["storyboard_id"], 1)
     with pytest.raises(ValueError, match="镜头索引越界"):

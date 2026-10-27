@@ -19,7 +19,7 @@ def sample_plan():
 
 def test_local_ollama_enriches_text_without_changing_ids_or_timing(monkeypatch):
     engine = LocalOllamaDirector()
-    monkeypatch.setattr(engine, "_installed_model", lambda: "qwen2.5:3b")
+    monkeypatch.setattr(engine, "diagnose", lambda: {"status": "ok", "model": "qwen2.5:3b", "detail": "已找到模型 qwen2.5:3b"})
     response = {
         "logline": "一名废柴弟子在天劫中觉醒",
         "hook": "天雷落下，废柴睁开双眼",
@@ -43,7 +43,7 @@ def test_local_ollama_enriches_text_without_changing_ids_or_timing(monkeypatch):
 
 def test_invalid_ollama_response_uses_complete_deterministic_fallback(monkeypatch):
     engine = LocalOllamaDirector()
-    monkeypatch.setattr(engine, "_installed_model", lambda: "qwen2.5:3b")
+    monkeypatch.setattr(engine, "diagnose", lambda: {"status": "ok", "model": "qwen2.5:3b", "detail": "已找到模型 qwen2.5:3b"})
     malformed = {"logline": "不应被写入", "hook": "不应被写入", "shot_items": [{"id": "WRONG-ID"}]}
     monkeypatch.setattr(engine, "_request_json", lambda url, payload=None, timeout=3: {"response": json.dumps(malformed)})
     plan = sample_plan()
@@ -58,16 +58,17 @@ def test_invalid_ollama_response_uses_complete_deterministic_fallback(monkeypatc
 
 def test_missing_ollama_model_returns_clear_fallback(monkeypatch):
     engine = LocalOllamaDirector()
-    monkeypatch.setattr(engine, "_installed_model", lambda: None)
+    monkeypatch.setattr(engine, "diagnose", lambda: {"status": "ollama_not_running", "detail": "无法连接本机 Ollama，服务未运行"})
     plan = sample_plan()
     status = engine.enrich_plan(plan)
     assert status["mode"] == "deterministic_fallback"
-    assert "未运行" in status["message"]
+    assert status["diagnosis"] == "ollama_not_running"
+    assert "未运行" in status["diagnosis_detail"]
 
 
 def test_local_ollama_enriches_shots_beyond_first_batch(monkeypatch):
     engine = LocalOllamaDirector()
-    monkeypatch.setattr(engine, "_installed_model", lambda: "qwen2.5:3b")
+    monkeypatch.setattr(engine, "diagnose", lambda: {"status": "ok", "model": "qwen2.5:3b", "detail": "已找到模型 qwen2.5:3b"})
     plan = sample_plan()
     plan["shots"] = [
         {"id": f"SHOT-{index:04d}", "index": index, "duration": 1, "type": "镜头",
@@ -107,7 +108,7 @@ def test_local_ollama_enriches_shots_beyond_first_batch(monkeypatch):
 
 def test_local_ollama_later_batch_failure_does_not_partially_mutate_plan(monkeypatch):
     engine = LocalOllamaDirector()
-    monkeypatch.setattr(engine, "_installed_model", lambda: "qwen2.5:3b")
+    monkeypatch.setattr(engine, "diagnose", lambda: {"status": "ok", "model": "qwen2.5:3b", "detail": "已找到模型 qwen2.5:3b"})
     plan = sample_plan()
     plan["shots"] = [
         {"id": f"SHOT-{index:04d}", "index": index, "duration": 1, "visual_prompt": f"原始{index}"}
@@ -124,7 +125,7 @@ def test_local_ollama_later_batch_failure_does_not_partially_mutate_plan(monkeyp
             {"id": shot["id"], "visual_prompt": f"不应写入{shot['id']}", "action": "动作"}
             for shot in request_data["shots"]
         ]
-        if calls == 2:
+        if calls >= 2:
             items[0]["id"] = "WRONG-ID"
         return {"response": json.dumps({
             "logline": "不应写入", "hook": "不应写入",
@@ -135,7 +136,7 @@ def test_local_ollama_later_batch_failure_does_not_partially_mutate_plan(monkeyp
     result = engine.enrich_plan(plan)
 
     assert result["mode"] == "deterministic_fallback"
-    assert calls == 2
+    assert calls == 3  # first batch succeeds; second batch is retried once before fallback
     assert plan["story"]["logline"] == before["story"]["logline"]
     assert all("不应写入" not in shot.get("visual_prompt", "") for shot in plan["shots"])
     assert all(shot.get("director_note") for shot in plan["shots"])
@@ -145,7 +146,7 @@ def test_local_ollama_later_batch_failure_does_not_partially_mutate_plan(monkeyp
 
 def test_missing_ollama_replaces_generic_plan_prompts_with_shot_specific_visuals(monkeypatch):
     engine = LocalOllamaDirector()
-    monkeypatch.setattr(engine, "_installed_model", lambda: None)
+    monkeypatch.setattr(engine, "diagnose", lambda: {"status": "ollama_not_running", "detail": "无法连接本机 Ollama，服务未运行"})
     plan = sample_plan()
     plan["intent"]["aspect_ratio"] = "9:16"
     plan["shots"] = [
