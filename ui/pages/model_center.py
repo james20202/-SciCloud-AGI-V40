@@ -12,6 +12,22 @@ class ModelCenter(QWidget):
         # note only, no new navigation, no rendering changes.
         cloud_note=QLabel('云端 LLM（可选，默认关闭，仅用于导演计划文字生成，不用于出图/出视频）：通过环境变量 SCICLOUD_CLOUD_LLM_ENABLED / SCICLOUD_CLOUD_LLM_BASE_URL / SCICLOUD_CLOUD_LLM_MODEL / SCICLOUD_CLOUD_LLM_API_KEY 配置，指向 OpenAI 兼容转发口（如 127.0.0.1:18899/v1）；任何云端失败都会自动回落本地 Ollama，再回落本地规则。提示词会发往上游，不适合敏感内容。')
         cloud_note.setObjectName('Muted'); cloud_note.setWordWrap(True); root.addWidget(cloud_note)
+        # ComfyUI auto-start status: read-only label only, no new buttons.
+        # The packaged app does not bundle ComfyUI, so the path always
+        # points outside the bundle; see core/comfyui_autostart.py.
+        try:
+            from core.comfyui_autostart import status as comfyui_autostart_status
+            _auto = comfyui_autostart_status()
+            _auto_text = (
+                f"ComfyUI 自动启动：{'已开启' if _auto['enabled'] else '已关闭（SCICLOUD_COMFYUI_AUTOSTART）'}"
+                f" · 路径：{_auto['comfyui_dir']}"
+                f" · 启动命令：{_auto['start_command']}"
+                f" · 端口：{_auto['endpoint']}"
+            )
+        except Exception:
+            _auto_text = "ComfyUI 自动启动：状态不可用"
+        _auto_note = QLabel(_auto_text)
+        _auto_note.setObjectName('Muted'); _auto_note.setWordWrap(True); root.addWidget(_auto_note)
         bar=QHBoxLayout()
         for text,fn,obj in [('刷新',self.refresh,'Secondary'),('检测连接',self.test_selected,'Secondary'),('启用 / 停用',self.toggle,'Secondary')]:
             b=QPushButton(text); b.setObjectName(obj); b.clicked.connect(fn); bar.addWidget(b)
