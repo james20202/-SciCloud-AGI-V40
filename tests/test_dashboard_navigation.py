@@ -13,7 +13,11 @@ def test_dashboard_emits_creation_request_instead_of_creating_fixed_task():
 
 def test_dashboard_shortcuts_have_real_routes():
     source = (ROOT / "ui/pages/production_dashboard.py").read_text(encoding="utf-8")
-    for route in ("'分镜'", "'人物场景'", "'一键成片'", "'项目'"):
+    # Top-5 honesty fix: the dashboard's "current/recent project" links
+    # used to point at the legacy project page, which lists nothing
+    # from V40 workflows. They now point at the workflow page, where
+    # the real current project lives.
+    for route in ("'分镜'", "'人物场景'", "'一键成片'", "'工作流'"):
         assert route in source
     assert "self.navigate_requested.emit(target)" in source
 
