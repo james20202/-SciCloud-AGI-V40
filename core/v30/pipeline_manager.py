@@ -1,7 +1,6 @@
 
 import json
 import os
-import time
 
 
 class PipelineManager:
@@ -88,36 +87,18 @@ class PipelineManager:
         project,
         episode
     ):
-
-
-        key=f"{project}_{episode}"
-
-
+        # DEPRECATED (top-5 honesty fix): the old implementation slept
+        # 0.2s per step and then marked every step "完成" without
+        # generating, calling, or verifying anything. Never do that
+        # again: mark the steps deprecated, save, and return False.
+        # Real production goes through the workflow page.
+        key = f"{project}_{episode}"
         if key not in self.tasks:
-
-            self.create(
-                project,
-                episode
-            )
-
-
+            self.create(project, episode)
         for step in self.tasks[key]:
-
-            self.tasks[key][step]="生产中"
-
-            self.save()
-
-
-            time.sleep(0.2)
-
-
-            self.tasks[key][step]="完成"
-
-            self.save()
-
-
-
-        return True
+            self.tasks[key][step] = "已废弃"
+        self.save()
+        return False
 
 
     def get_status(self):

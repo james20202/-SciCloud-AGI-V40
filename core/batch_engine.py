@@ -97,68 +97,18 @@ class BatchEngine:
 
 
     def run_one(self):
-
-
-        if not self.queue:
-
-            return False
-
-
-
-        task=self.queue.pop(0)
-
-
-        task["status"]="生产中"
-
-
-        project=task["project"]
-
-        ep=task["episode"]
-
-
-        self.data[project][ep]="生产中"
-
-        self.save()
-
-
-
-        ai_scheduler.create_task(
-            project,
-            ep
-        )
-
-
-        result=ai_scheduler.run()
-
-
-
-        if result:
-
-            self.data[project][ep]="完成"
-
-        else:
-
-            self.data[project][ep]="失败"
-
-
-
-        self.save()
-
-
-        return True
-
-
+        # DEPRECATED (top-5 honesty fix): the old path ran the fake
+        # ai_scheduler pipeline and then marked the episode "完成".
+        # Never pop the queue, never call the scheduler, never mark
+        # done from this path. Real batch production, if restored,
+        # must run real one-click production per workflow (WF).
+        return False
 
     def run_all(self):
-
-
-        while self.queue:
-
-            self.run_one()
-
-
-
-        return True
+        # DEPRECATED: see run_one. Do not loop: run_one() now always
+        # returns False without consuming the queue, so a loop here
+        # would never terminate.
+        return False
 
 
 

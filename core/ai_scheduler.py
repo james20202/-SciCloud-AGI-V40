@@ -68,145 +68,18 @@ class AIScheduler:
 
 
     def run(self):
-
-
-        if not self.tasks:
-
-
-            logger.add(
-                "没有AI任务"
-            )
-
-            return False
-
-
-
-        self.current=self.tasks.pop(0)
-
-
-        project=self.current["project"]
-
-        episode=self.current["episode"]
-
-
-
-        context.set_project(
-
-            project,
-
-            episode
-
+        # DEPRECATED (top-5 honesty fix): the old ai_pipeline only
+        # writes logs and never generates anything, yet returned True,
+        # so callers marked episodes "完成". Never run it again and
+        # never write a "完成" record from this path. Real production
+        # goes through the workflow page (one-click production).
+        # Kept as a guard instead of deleting the class, because
+        # batch_engine and legacy pages still import it.
+        self.status = "已废弃"
+        logger.add(
+            "已废弃：旧版 AI 调度不再执行，请到工作流页用一键出片生产"
         )
-
-
-
-        try:
-
-
-            self.status="AI分析"
-
-
-            logger.add(
-
-                "AI开始分析第"
-
-                +
-
-                episode
-
-                +
-
-                "集"
-
-            )
-
-
-
-            record.set_status(
-
-                episode,
-
-                "AI生产中"
-
-            )
-
-
-
-            result=ai_pipeline.run()
-
-
-
-            if result:
-
-
-                record.set_status(
-
-                    episode,
-
-                    "完成"
-
-                )
-
-
-                self.status="完成"
-
-
-                logger.add(
-
-                    "AI任务完成 第"
-
-                    +
-
-                    episode
-
-                    +
-
-                    "集"
-
-                )
-
-
-            else:
-
-
-                record.set_status(
-
-                    episode,
-
-                    "失败"
-
-                )
-
-
-                self.status="失败"
-
-
-
-            return result
-
-
-
-        except Exception as e:
-
-
-            self.status="错误"
-
-
-            logger.add(
-
-                "AI调度错误："
-
-                +
-
-                str(e)
-
-            )
-
-
-            return False
-
-
-
+        return False
 
 ai_scheduler=AIScheduler()
 

@@ -2,7 +2,8 @@ import os
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFrame,QTextEdit,QProgressBar,QGridLayout
 from PySide6.QtGui import QPixmap
-from core.ai_scheduler import ai_scheduler
+from core.dashboard_summary import summarize_workflows
+from core.workflow_engine import workflow_engine
 
 ASSET_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets')
 BG_PATH = os.path.join(ASSET_DIR, 'bg_main.png')
@@ -68,27 +69,27 @@ class ProductionDashboard(QWidget):
         cards.addWidget(self.mini('▦','场景生成','AI场景·风格多样·高质量画面'),0,3)
         left.addLayout(cards)
 
-        # ===== 制作流水线 =====
+        # ===== 制作流水线：真实工作流数据 =====
+        # Previously every step and percentage here was hard-coded.
+        # Now the stages come from the newest real workflow (see
+        # core/dashboard_summary.py); with no workflow at all, every
+        # stage honestly reads "待处理".
+        try:
+            summary = summarize_workflows(workflow_engine.list_workflows())
+        except Exception:
+            summary = summarize_workflows([])
+        latest = summary['latest']
         pl=QHBoxLayout(); pt=QLabel('制作流水线'); pt.setObjectName('SectionTitle'); pl.addWidget(pt); pl.addStretch()
         more=QPushButton('查看全部 >'); more.setObjectName('Secondary'); more.setFixedHeight(28); more.clicked.connect(lambda: self.navigate_requested.emit('生产')); pl.addWidget(more); left.addLayout(pl)
         steps=QHBoxLayout(); steps.setSpacing(8)
-        steps.addWidget(self.step('剧本','已完成','Ok'),1)
-        steps.addWidget(self.step('分镜','进行中 65%','Warn'),1)
-        steps.addWidget(self.step('角色','待处理','Muted'),1)
-        steps.addWidget(self.step('场景','待处理','Muted'),1)
-        steps.addWidget(self.step('生成视频','待处理','Muted'),1)
+        for stage in summary['pipeline']:
+            tone = 'Ok' if stage['status'] == '已完成' else ('Warn' if stage['status'] == '进行中' else 'Muted')
+            steps.addWidget(self.step(stage['name'], stage['status'], tone), 1)
         left.addLayout(steps)
-
-        # ===== 热门模板 =====
-        tp=QHBoxLayout(); tt=QLabel('热门模板'); tt.setObjectName('SectionTitle'); tp.addWidget(tt); tp.addStretch()
-        moret=QPushButton('查看更多 >'); moret.setObjectName('Secondary'); moret.setFixedHeight(28); moret.clicked.connect(lambda: self.navigate_requested.emit('资产')); tp.addWidget(moret); left.addLayout(tp)
-        tgs=QHBoxLayout(); tgs.setSpacing(8)
-        tgs.addWidget(self.template('修仙玄幻','12.8万次使用'),1)
-        tgs.addWidget(self.template('都市异能','8.6万次使用'),1)
-        tgs.addWidget(self.template('古风言情','6.2万次使用'),1)
-        tgs.addWidget(self.template('科幻未来','5.4万次使用'),1)
-        tgs.addWidget(self.template('悬疑推理','3.7万次使用'),1)
-        left.addLayout(tgs)
+        # The old "热门模板" block had no real usage statistics behind
+        # it (fixed usage counts with no data behind them), so it is
+        # removed outright rather than replaced with new fixed numbers.
+        # rather than replaced with another set of fixed numbers.
         left.addStretch()
         body.addLayout(left,1)
 
@@ -97,28 +98,35 @@ class ProductionDashboard(QWidget):
         W=290
         hub=QFrame(); hub.setObjectName('PanelCard'); hub.setFixedWidth(W); rl=QVBoxLayout(hub); rl.setContentsMargins(16,14,16,14); rl.setSpacing(8)
         rt=QLabel('AI 导演中枢'); rt.setObjectName('SectionTitle'); rl.addWidget(rt)
-        stt=QLabel('◉ 思考中...'); stt.setStyleSheet('color:#d8c48c;font-size:12px;font-weight:600;'); rl.addWidget(stt)
-        ssub=QLabel('正在分析您的创意，生成最佳方案...'); ssub.setObjectName('Muted'); rl.addWidget(ssub)
-        for text,val in [('剧本分析',98),('分镜规划',75),('角色生成',62),('场景构建',48)]:
-            rr=QHBoxLayout(); rr.addWidget(QLabel(text)); rr.addStretch(); rr.addWidget(QLabel(f'{val}%')); rl.addLayout(rr)
-            bar=QProgressBar(); bar.setValue(val); rl.addWidget(bar)
+        if latest:
+            stt=QLabel(f"◉ {latest['title']} · {latest['status_text']}"); stt.setStyleSheet('color:#d8c48c;font-size:12px;font-weight:600;'); stt.setWordWrap(True); rl.addWidget(stt)
+            ssub=QLabel(f"已完成 {latest['done']} / {latest['total']} 个任务"); ssub.setObjectName('Muted'); rl.addWidget(ssub)
+            bar=QProgressBar(); bar.setValue(latest['progress']); rl.addWidget(bar)
+            rl.addWidget(QLabel(f"总体进度 {latest['progress']}%（按已完成任务数计算）"))
+        else:
+            stt=QLabel('◉ 暂无工作流'); stt.setStyleSheet('color:#d8c48c;font-size:12px;font-weight:600;'); rl.addWidget(stt)
+            ssub=QLabel('请先从上方开始创作，生成导演计划并进入生产队列。'); ssub.setObjectName('Muted'); ssub.setWordWrap(True); rl.addWidget(ssub)
+            bar=QProgressBar(); bar.setValue(0); rl.addWidget(bar)
         right.addWidget(hub)
 
         cur=QFrame(); cur.setObjectName('PanelCard'); cur.setFixedWidth(W); cll=QVBoxLayout(cur); cll.setContentsMargins(16,14,16,14); cll.setSpacing(8)
-        cht=QHBoxLayout(); a=QLabel('当前项目'); a.setObjectName('SectionTitle'); cht.addWidget(a); cht.addStretch(); cht.addWidget(QLabel('制作中')); cll.addLayout(cht)
-        proj=QLabel('仙侠修仙项目'); proj.setStyleSheet('font-size:15px;font-weight:750;color:#f2eee4;'); cll.addWidget(proj)
-        pdesc=QLabel('修仙·玄幻·1080P'); pdesc.setObjectName('Muted'); cll.addWidget(pdesc)
+        cht=QHBoxLayout(); a=QLabel('当前项目'); a.setObjectName('SectionTitle'); cht.addWidget(a); cht.addStretch(); cht.addWidget(QLabel(latest['status_text'] if latest else '暂无')); cll.addLayout(cht)
+        proj=QLabel(latest['title'] if latest else '暂无项目'); proj.setStyleSheet('font-size:15px;font-weight:750;color:#f2eee4;'); proj.setWordWrap(True); cll.addWidget(proj)
+        pdesc=QLabel(f"{latest['done']} / {latest['total']} 个任务已完成" if latest else '请先开始创作'); pdesc.setObjectName('Muted'); cll.addWidget(pdesc)
         b2=QPushButton('继续创作'); b2.setObjectName('Secondary'); b2.clicked.connect(self.goto_project); cll.addWidget(b2)
         right.addWidget(cur)
 
         rec=QFrame(); rec.setObjectName('PanelCard'); rec.setFixedWidth(W); rcl=QVBoxLayout(rec); rcl.setContentsMargins(16,14,16,14); rcl.setSpacing(6)
         rh=QHBoxLayout(); r1=QLabel('最近项目'); r1.setObjectName('SectionTitle'); rh.addWidget(r1); rh.addStretch()
-        r2=QPushButton('查看全部 >'); r2.setObjectName('Secondary'); r2.setFixedHeight(26); r2.clicked.connect(lambda: self.navigate_requested.emit('项目')); rh.addWidget(r2); rcl.addLayout(rh)
-        for name,time,status,tone in [('仙侠修仙项目','3小时前','创作中','Warn'),('都市异能故事','1天前','已完成','Ok'),('星际冒险','2天前','已完成','Ok'),('古风言情','3天前','已完成','Ok')]:
-            rr=QHBoxLayout(); n=QLabel(name); n.setStyleSheet('font-size:12px;font-weight:650;color:#e3e0d7;'); rr.addWidget(n); rr.addStretch()
-            t=QLabel(time); t.setObjectName('Muted'); rr.addWidget(t)
-            s=QLabel(status); s.setObjectName(tone); rr.addWidget(s)
-            rcl.addLayout(rr)
+        r2=QPushButton('查看全部 >'); r2.setObjectName('Secondary'); r2.setFixedHeight(26); r2.clicked.connect(lambda: self.navigate_requested.emit('工作流')); rh.addWidget(r2); rcl.addLayout(rh)
+        if summary['recent']:
+            for item in summary['recent']:
+                rr=QHBoxLayout(); n=QLabel(item['title']); n.setStyleSheet('font-size:12px;font-weight:650;color:#e3e0d7;'); n.setWordWrap(True); rr.addWidget(n); rr.addStretch()
+                t=QLabel(item['created']); t.setObjectName('Muted'); rr.addWidget(t)
+                s=QLabel(item['status_text']); s.setObjectName('Muted'); rr.addWidget(s)
+                rcl.addLayout(rr)
+        else:
+            empty=QLabel('暂无项目，请先开始创作'); empty.setObjectName('Muted'); rcl.addWidget(empty)
         right.addWidget(rec)
         right.addStretch()
         body.addLayout(right)
@@ -155,4 +163,7 @@ class ProductionDashboard(QWidget):
             self.quick_requested.emit(key, idea)
 
     def goto_project(self):
-        self.navigate_requested.emit('项目')
+        # The old target was the legacy project page, which lists
+        # nothing from V40 workflows. The real current project lives
+        # on the workflow page.
+        self.navigate_requested.emit('工作流')
