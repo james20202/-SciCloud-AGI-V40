@@ -149,7 +149,12 @@ def test_build_prompt_rejects_out_of_range_shot_index(tmp_path):
     import pytest
 
     director = StoryboardDirector(directory=str(tmp_path))
-    storyboard = director.create_from_plan({"plan_id": "PLAN-INDEX", "shots": [{"id": "SHOT-1"}]})
+    storyboard = director.create_from_plan({
+        "plan_id": "PLAN-INDEX",
+        "scenes": [{"id": "SCENE-1", "name": "场景"}],
+        "characters": [{"id": "CHAR-1", "name": "主角"}],
+        "shots": [{"id": "SHOT-1", "scene_id": "SCENE-1", "character_ids": ["CHAR-1"], "visual_prompt": "有效画面", "duration": 5}],
+    })
     with pytest.raises(ValueError, match="镜头索引越界"):
         director.build_prompt(storyboard["storyboard_id"], 1)
     with pytest.raises(ValueError, match="镜头索引越界"):
