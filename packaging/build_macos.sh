@@ -37,11 +37,29 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+# 构建用 python 的选择，实测结论，不要改回 PATH 第一个 python3：
+# 在 James 的 Mac 上，Terminal 的 python3 和 /usr/bin/python3 实际都走
+# CommandLineTools 的 Python 3.9 框架，用它建虚拟环境两次都失败：
+# venv 在读取一个用户 site 的 .pth 时因非 UTF-8 字节（byte 0xb0）直接
+# 崩掉，logs/build.log 里有完整 traceback，dist/ 没有产出。
+# 第三次改用 Homebrew python3.12 建虚拟环境才成功：
+# PyInstaller 6.22.3、Python 3.12.16、macOS-15.1.1-arm64，
+# 产出 dist/SciCloud AGI V40.app，大小 220M。
+# 同时忽略用户 site，避免那个坏 .pth 再把 venv 拖崩。
+export PYTHONNOUSERSITE=1
+export PYTHONUTF8=1
+BUILD_PYTHON=""
+for candidate in /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3 /usr/bin/python3; do
+  if [ -x "$candidate" ]; then BUILD_PYTHON="$candidate"; break; fi
+done
+if [ -z "$BUILD_PYTHON" ]; then BUILD_PYTHON="$(command -v python3)"; fi
+echo "构建用 python：$BUILD_PYTHON"
+
 VENV="$ROOT/build/.packaging-venv"
 if [ ! -x "$VENV/bin/python" ]; then
   echo "创建构建虚拟环境：$VENV"
   mkdir -p "$ROOT/build"
-  python3 -m venv "$VENV"
+  "$BUILD_PYTHON" -m venv "$VENV"
 fi
 
 # Build-only installs. This does not touch requirements.txt and does
