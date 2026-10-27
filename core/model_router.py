@@ -6,7 +6,7 @@ from core.model_runtime import model_runtime
 class ModelRouter:
     """Routes production skills to real enabled+ready local capabilities; never fabricates a provider."""
     def candidates(self, skill):
-        mapping={'image':'image_video','video':'image_video','tts':'tts','vision':'vision','sound':'media','edit':'media'}
+        mapping={'image':'image_video','video':'image_video','tts':'tts','voice':'tts','vision':'vision','sound':'media','edit':'media'}
         wanted=mapping.get(skill, skill)
         rows=[]
         for m in model_hub.list():

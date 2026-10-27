@@ -61,7 +61,7 @@ class ModelHub:
         if preferred:
             m=self.get(preferred)
             if m and m.get('enabled'): return m
-        mapping={'image':'image_video','video':'image_video','tts':'tts','sound':'media','edit':'media','qc':'media','vision':'vision'}
+        mapping={'image':'image_video','video':'image_video','tts':'tts','voice':'tts','sound':'media','edit':'media','qc':'media','vision':'vision'}
         wanted=mapping.get(skill_type)
         for m in self.list():
             if m.get('enabled') and (m.get('type')==wanted or m.get('adapter')==skill_type): return m

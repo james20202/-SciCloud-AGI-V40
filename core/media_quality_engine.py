@@ -6,6 +6,8 @@ import re
 import shutil
 import subprocess
 
+from core.media_tools import find_tool
+
 
 class MediaQualityEngine:
     def __init__(self, runner=None, which=None):
@@ -14,7 +16,10 @@ class MediaQualityEngine:
 
     def _run(self, command, timeout=180):
         if not self.which(command[0]):
-            return {"success": False, "message": f"找不到可执行文件：{command[0]}"}
+            resolved = find_tool(command[0])
+            if not resolved:
+                return {"success": False, "message": f"找不到可执行文件：{command[0]}"}
+            command = [resolved] + list(command[1:])
         try:
             proc = self.runner(command, capture_output=True, text=True, timeout=timeout)
             return {"success": proc.returncode == 0, "stdout": proc.stdout or "",
@@ -79,8 +84,9 @@ class MediaQualityEngine:
             except (TypeError, ValueError, OverflowError):
                 errors.append("invalid_expected_duration")
         diagnostics = {"success": False, "message": "未执行黑帧/静音检测"}
-        if self.which("ffmpeg"):
-            command = ["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-vf",
+        ffmpeg_path = "ffmpeg" if self.which("ffmpeg") else find_tool("ffmpeg")
+        if ffmpeg_path:
+            command = [ffmpeg_path, "-hide_banner", "-nostats", "-i", path, "-vf",
                        f"blackdetect=d={float(black_warning_seconds)}:pix_th=0.10:pic_th=0.98"]
             if has_audio:
                 command += ["-af", f"silencedetect=n=-50dB:d={float(silence_warning_seconds)}"]

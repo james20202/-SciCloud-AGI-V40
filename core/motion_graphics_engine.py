@@ -8,6 +8,7 @@ network access, or a generative model.
 import os
 import shutil
 import subprocess
+from core.media_tools import find_tool
 import tempfile
 from PIL import Image, ImageDraw, ImageFont
 
@@ -132,7 +133,7 @@ class MotionGraphicsEngine:
             return {"success": False, "message": "卡片时长或帧率无效"}
         if not 0.25 <= duration <= 60 or not 12 <= fps <= 60:
             return {"success": False, "message": "卡片时长须为 0.25–60 秒，帧率须为 12–60"}
-        ffmpeg = shutil.which("ffmpeg")
+        ffmpeg = find_tool("ffmpeg")
         if not ffmpeg:
             return {"success": False, "message": "未找到 FFmpeg"}
         output_video = os.path.abspath(output_video)

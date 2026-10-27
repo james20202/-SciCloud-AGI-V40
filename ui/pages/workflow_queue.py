@@ -1,5 +1,8 @@
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QListWidget,QProgressBar,QComboBox,QMessageBox
 from core.workflow_engine import workflow_engine, STATUS_READY, STATUS_RUNNING, STATUS_DONE, STATUS_FAILED
+from core.final_video import find_final_video
+from core.one_click import run_one_click
+from ui.pages.video_preview import VideoPreviewDialog
 from core.execution_engine import execution_engine
 from core.auto_director import auto_director
 from core.production_bot import configure_production_bot
@@ -22,7 +25,7 @@ class WorkflowQueuePage(QWidget):
         title=QLabel('⚙ 生产工作流'); title.setObjectName('PageTitle'); root.addWidget(title)
         root.addWidget(QLabel('V40.10：导演计划进入可暂停、可恢复、可重试，并支持视觉审核与自动修复的生产队列。'))
         bar=QHBoxLayout(); self.selector=QComboBox(); bar.addWidget(self.selector,1)
-        for text,fn in [('⚡ 执行任务',self.execute),('🤖 批准并自动执行',self.auto_run),('🔍 AI审核',self.qc),('🧭 导演闭环',self.director_loop),('■ 停止自动执行',self.stop_auto),('▶ 开始任务',self.start),('✓ 手动完成',self.complete),('↻ 重试',self.retry),('Ⅱ 暂停',self.pause),('▶ 恢复',self.resume)]:
+        for text,fn in [('🎬 一键出片',self.one_click),('▶ 预览成片',self.preview_final),('⚡ 执行任务',self.execute),('🤖 批准并自动执行',self.auto_run),('🔍 AI审核',self.qc),('🧭 导演闭环',self.director_loop),('■ 停止自动执行',self.stop_auto),('▶ 开始任务',self.start),('✓ 手动完成',self.complete),('↻ 重试',self.retry),('Ⅱ 暂停',self.pause),('▶ 恢复',self.resume)]:
             b=QPushButton(text); b.clicked.connect(fn); bar.addWidget(b)
         root.addLayout(bar)
         self.progress=QProgressBar(); root.addWidget(self.progress)
@@ -102,6 +105,56 @@ class WorkflowQueuePage(QWidget):
         result=execution_engine.execute(self.workflow['workflow_id'],tid)
         QMessageBox.information(self,'任务执行',result.get('message',''))
         self.workflow=workflow_engine.load(self.workflow['workflow_id']); self.render()
+
+    def preview_final(self):
+        if not self.workflow:
+            return
+        path = find_final_video(self.workflow)
+        if not path:
+            QMessageBox.information(self, '预览成片', '尚未生成成片，请先执行剪辑任务，或点 🎬 一键出片。')
+            return
+        dialog = VideoPreviewDialog(path, self)
+        dialog.exec()
+
+    def one_click(self):
+        if not self.workflow:
+            return
+        wid = self.workflow['workflow_id']
+        answer = QMessageBox.question(
+            self, '确认一键出片',
+            f'一键出片会先做预检（ComfyUI、图像工作流、TTS、FFmpeg/ffprobe），'
+            f'通过后按依赖顺序执行工作流 {wid} 的全部任务，首个失败即停。\n'
+            f'这可能触发本机模型推理、文件生成和较长时间的任务。',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            result = run_one_click(wid)
+        except Exception as exc:
+            result = {'success': False, 'message': str(exc)}
+        if result.get('success'):
+            message = f"{result.get('message', '一键出片完成')}（{result.get('steps', 0)} 步）"
+            final_video = result.get('final_video')
+            if final_video:
+                message += f"\n成片：{final_video}"
+            QMessageBox.information(self, '一键出片', message)
+            self.workflow = workflow_engine.load(wid)
+            self.render()
+            if final_video:
+                dialog = VideoPreviewDialog(final_video, self)
+                dialog.exec()
+            return
+        blockers = result.get('blockers') or []
+        if blockers:
+            message = '预检未通过，未开始执行：\n' + '\n'.join(f'· {item}' for item in blockers)
+        elif result.get('failed_task_id'):
+            message = f"任务 {result.get('failed_task_id')} 失败，已停止：{result.get('message', '')}"
+        else:
+            message = result.get('message', '执行失败')
+        QMessageBox.warning(self, '一键出片', message)
+        self.workflow = workflow_engine.load(wid)
+        self.render()
 
     def auto_run(self):
         if not self.workflow:return

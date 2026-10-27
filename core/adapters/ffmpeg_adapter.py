@@ -1,12 +1,13 @@
 import os, shutil, subprocess
 from core.adapters.base import BaseAdapter, AdapterResult
+from core.media_tools import find_tool
 from core.config import OUTPUT_DIR
 
 class FFmpegAdapter(BaseAdapter):
     key='ffmpeg'
     def test(self, model):
         path=model.get('command','ffmpeg') or 'ffmpeg'
-        found=shutil.which(path)
+        found=find_tool(path)
         return AdapterResult(bool(found), f'FFmpeg: {found or "未找到"}', data={'path':found})
 
     def execute(self, model, task, context):
@@ -16,8 +17,10 @@ class FFmpegAdapter(BaseAdapter):
             return AdapterResult(False, 'FFmpeg 适配器需要具体 command；当前任务没有媒体命令，未执行。')
         if not isinstance(command,list):
             return AdapterResult(False, 'FFmpeg command 必须是参数列表。')
-        if not shutil.which(command[0]):
+        resolved=find_tool(command[0])
+        if not resolved:
             return AdapterResult(False, f'找不到可执行文件：{command[0]}')
+        command=[resolved]+list(command[1:])
         os.makedirs(OUTPUT_DIR,exist_ok=True)
         try:
             p=subprocess.run(command, capture_output=True, text=True, timeout=int(task.get('timeout',1800)))
