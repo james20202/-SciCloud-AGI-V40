@@ -90,6 +90,9 @@ class WorkflowEngine:
             'prompt':['storyboard'], 'image':['prompt'], 'video':['image'], 'voice':['story'],
             'sound':['video','voice'], 'title_card':['story'], 'edit':['video','sound','voice','title_card'], 'qc':['edit'], 'publish':['qc']
         }
+        ids_by_type={}
+        for item in raw_tasks:
+            ids_by_type.setdefault(item['type'], []).append(item['id'])
         tasks=[]
         for t in raw_tasks:
             task=dict(t)
@@ -115,6 +118,11 @@ class WorkflowEngine:
             if task_type == 'edit' and not any(candidate.get('type') == 'title_card' for candidate in raw_tasks):
                 dependencies=[dependency for dependency in dependencies if dependency != 'title_card']
             task['depends_on']=dependencies
+            task['depends_on_task_ids']=[
+                upstream_id
+                for dependency_type in dependencies
+                for upstream_id in ids_by_type.get(dependency_type, [])
+            ]
             task['started_at']=None; task['finished_at']=None; task['error']=None
             task['storyboard_id']=storyboard_id
             if task_type == 'title_card':
@@ -168,19 +176,35 @@ class WorkflowEngine:
             if task.get('status') not in (STATUS_PENDING, STATUS_READY):
                 continue
             dependencies_ready = True
-            for dependency_type in task.get('depends_on', []):
+            dependency_types = task.get('depends_on', [])
+            # Keep type-level dependencies for old persisted workflows and for
+            # detecting a missing required stage. New workflows also persist the
+            # exact upstream task IDs so duplicate stages are explicit/auditable.
+            for dependency_type in dependency_types:
                 prerequisites = [
                     candidate for candidate in tasks
                     if candidate.get('type') == dependency_type
                 ]
-                # Missing prerequisite stages are not implicitly satisfied.
-                # This prevents partial plans from bypassing required production steps.
-                if not prerequisites or not all(
-                    candidate.get('status') == STATUS_DONE
-                    for candidate in prerequisites
-                ):
+                if not prerequisites:
                     dependencies_ready = False
                     break
+            if dependencies_ready and 'depends_on_task_ids' in task:
+                done_ids = {
+                    candidate.get('id') for candidate in tasks
+                    if candidate.get('status') == STATUS_DONE
+                }
+                required_ids = task.get('depends_on_task_ids', [])
+                if any(upstream_id not in done_ids for upstream_id in required_ids):
+                    dependencies_ready = False
+            elif dependencies_ready:
+                for dependency_type in dependency_types:
+                    prerequisites = [
+                        candidate for candidate in tasks
+                        if candidate.get('type') == dependency_type
+                    ]
+                    if not all(candidate.get('status') == STATUS_DONE for candidate in prerequisites):
+                        dependencies_ready = False
+                        break
             task['status'] = STATUS_READY if dependencies_ready else STATUS_PENDING
         if tasks and all(t.get('status')==STATUS_DONE for t in tasks): wf['status']='completed'
         elif wf.get('paused'): wf['status']='paused'
