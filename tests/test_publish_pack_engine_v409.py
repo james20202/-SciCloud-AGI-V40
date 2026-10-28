@@ -63,3 +63,26 @@ def test_publish_pack_contains_video_and_verified_manifest_after_qc(tmp_path, mo
         assert manifest["final_video"] == "episode.mp4"
         assert any(item["filename"] == "episode.mp4" and len(item["sha256"]) == 64
                    for item in manifest["assets"])
+
+
+def test_publish_pack_rejects_path_like_episode_ids_before_touching_output(tmp_path, monkeypatch):
+    project, output, video = _setup(tmp_path, monkeypatch)
+    invalid_ids = ["", " ", ".", "..", "../EP-TEST", "/tmp/EP-TEST", "folder/../EP-TEST",
+                   "folder\\\\EP-TEST", "EP-TEST\\x00", None, 123]
+    for episode_id in invalid_ids:
+        result = PublishPackEngine().build(episode_id, str(video))
+        assert result["success"] is False, episode_id
+        assert "episode_id 无效" in result["message"], episode_id
+    assert not output.exists()
+
+
+def test_publish_pack_rejects_episode_record_symlink_outside_project(tmp_path, monkeypatch):
+    project, output, video = _setup(tmp_path, monkeypatch)
+    external = tmp_path / "external-episode.json"
+    external.write_text(json.dumps({"episode_id": "EP-OUTSIDE", "duration_seconds": 30}), encoding="utf-8")
+    link = project / "episodes" / "EP-LINK.json"
+    link.symlink_to(external)
+    result = PublishPackEngine().build("EP-LINK", str(video))
+    assert result["success"] is False
+    assert "路径越界" in result["message"]
+    assert not output.exists()
