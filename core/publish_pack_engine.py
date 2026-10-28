@@ -13,8 +13,26 @@ class PublishPackEngine:
                 digest.update(chunk)
         return digest.hexdigest()
 
+    @staticmethod
+    def _valid_episode_id(episode_id):
+        """Accept a single path-safe episode identifier, never a filesystem path."""
+        return (
+            isinstance(episode_id, str)
+            and bool(episode_id.strip())
+            and episode_id not in {".", ".."}
+            and chr(0) not in episode_id
+            and "/" not in episode_id
+            and chr(92) not in episode_id
+            and os.path.basename(episode_id) == episode_id
+        )
+
     def build(self, episode_id, final_video=None):
-        src=os.path.join(PROJECT_DIR,'episodes',episode_id+'.json')
+        if not self._valid_episode_id(episode_id):
+            return {"success": False, "message": "episode_id 无效：不允许空值、路径分隔符或路径穿越"}
+        episodes_root = os.path.realpath(os.path.join(PROJECT_DIR, "episodes"))
+        src = os.path.realpath(os.path.join(episodes_root, episode_id + ".json"))
+        if os.path.commonpath([episodes_root, src]) != episodes_root:
+            return {"success": False, "message": "episode_id 路径越界，拒绝生成发布包"}
         if not os.path.exists(src):
             return {'success':False,'message':'Episode 不存在'}
         if not final_video or not os.path.isfile(final_video) or os.path.getsize(final_video)<=0:
